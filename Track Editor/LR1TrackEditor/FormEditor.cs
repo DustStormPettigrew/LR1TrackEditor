@@ -34,6 +34,7 @@
         private ToolStripMenuItem tsmiVertexColors;
         private ToolStripMenuItem tsmiPowerupBricks;
         private ToolStripMenuItem tsmiStaticObjects;
+        private ToolStripMenuItem tsmiAnimatedObjects;
         private ToolStripMenuItem tsmiOpen;
         private ToolStripMenuItem tsmiOptions;
         private ToolStripMenuItem tsmiAbout;
@@ -104,6 +105,8 @@
         private ListBox PWBListBox;
         private Label label27;
         private Label CameraPositionLabel;
+        private Label CameraSpeedHeaderLabel;
+        private Label CameraSpeedLabel;
         private ComboBox BrickColorComboBox;
         private Button BrickDeleteButton;
         private Button button2;
@@ -332,7 +335,7 @@
         {
             this.pictureBox1.Focus();
             this.game.IsMouseVisible = false;
-            Mouse.SetPosition(this.game.width / 2, this.game.height / 2);
+            MouseHelper.SetPosition(this.game.drawsurface, this.game.width / 2, this.game.height / 2);
             this.game.mouselock = true;
             Console.WriteLine("Mouse locked");
         }
@@ -341,7 +344,7 @@
         {
             if (this.game.pwb is null)
             {
-                MessageBox.Show("Please load a PWB file before adding new bricks.", "Error");
+                System.Windows.Forms.MessageBox.Show("Please load a PWB file before adding new bricks.", "Error");
             }
             else
             {
@@ -533,6 +536,11 @@
                 this.game.doDrawStaticObj = item.Checked;
                 Console.WriteLine("Static objects " + str);
             }
+            else if (sender == this.tsmiAnimatedObjects)
+            {
+                this.game.doDrawAnimObj = item.Checked;
+                Console.WriteLine("Animated objects " + str);
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -593,7 +601,7 @@
 
         private void FormEditor_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if ((this.edits.Count > 0) && (MessageBox.Show("You have made changes in: " + string.Join(", ", this.edits) + "\nDo you want to discard these changes and exit anyway?", "Warning", MessageBoxButtons.YesNo) == DialogResult.No))
+            if ((this.edits.Count > 0) && (System.Windows.Forms.MessageBox.Show("You have made changes in: " + string.Join(", ", this.edits) + "\nDo you want to discard these changes and exit anyway?", "Warning", MessageBoxButtons.YesNo) == DialogResult.No))
             {
                 e.Cancel = true;
             }
@@ -654,6 +662,7 @@
             this.tsmiPowerupBricks = new ToolStripMenuItem();
             this.tsmiAIPaths = new ToolStripMenuItem();
             this.tsmiStaticObjects = new ToolStripMenuItem();
+            this.tsmiAnimatedObjects = new ToolStripMenuItem();
             this.tsmiOptions = new ToolStripMenuItem();
             this.tsmiAbout = new ToolStripMenuItem();
             this.button1 = new Button();
@@ -743,6 +752,8 @@
             this.panel1 = new Panel();
             this.label27 = new Label();
             this.CameraPositionLabel = new Label();
+            this.CameraSpeedHeaderLabel = new Label();
+            this.CameraSpeedLabel = new Label();
             ((ISupportInitialize)this.pictureBox1).BeginInit();
             this.menuStrip1.SuspendLayout();
             this.tabControl1.SuspendLayout();
@@ -765,6 +776,8 @@
             this.pictureBox1.TabIndex = 0;
             this.pictureBox1.TabStop = false;
             this.pictureBox1.MouseEnter += new EventHandler(this.pictureBox1_MouseEnter);
+            this.pictureBox1.MouseWheel += (s, e) => MouseHelper.AddScrollDelta(e.Delta);
+            this.MouseWheel += (s, e) => MouseHelper.AddScrollDelta(e.Delta);
             this.menuStrip1.ImageScalingSize = new Size(20, 20);
             ToolStripItem[] menuStripItems = new ToolStripItem[] { this.tsmiFile, this.tsmiEdit, this.tsmiView, this.tsmiOptions, this.tsmiAbout };
             this.menuStrip1.Items.AddRange(menuStripItems);
@@ -834,7 +847,7 @@
             this.tsmiEdit.Name = "tsmiEdit";
             this.tsmiEdit.Size = new Size(0x2f, 0x18);
             this.tsmiEdit.Text = "&Edit";
-            ToolStripItem[] viewToolStripItems = new ToolStripItem[] { this.tsmiSkybox, this.tsmiTextures, this.tsmiVertexColors, this.tssView1, this.tsmiPowerupBricks, this.tsmiAIPaths, this.tsmiStaticObjects };
+            ToolStripItem[] viewToolStripItems = new ToolStripItem[] { this.tsmiSkybox, this.tsmiTextures, this.tsmiVertexColors, this.tssView1, this.tsmiPowerupBricks, this.tsmiAIPaths, this.tsmiStaticObjects, this.tsmiAnimatedObjects };
             this.tsmiView.DropDownItems.AddRange(viewToolStripItems);
             this.tsmiView.Name = "tsmiView";
             this.tsmiView.Size = new Size(0x35, 0x18);
@@ -885,6 +898,12 @@
             this.tsmiStaticObjects.Size = new Size(0xb8, 0x1a);
             this.tsmiStaticObjects.Text = "Static &objects";
             this.tsmiStaticObjects.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
+            this.tsmiAnimatedObjects.CheckOnClick = true;
+            this.tsmiAnimatedObjects.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            this.tsmiAnimatedObjects.Name = "tsmiAnimatedObjects";
+            this.tsmiAnimatedObjects.Size = new Size(0xb8, 0x1a);
+            this.tsmiAnimatedObjects.Text = "A&nimated objects";
+            this.tsmiAnimatedObjects.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
             this.tsmiOptions.Name = "tsmiOptions";
             this.tsmiOptions.Size = new Size(0x52, 0x18);
             this.tsmiOptions.Text = "&Options...";
@@ -894,7 +913,7 @@
             this.tsmiAbout.Text = "&About...";
             this.tsmiAbout.Click += new EventHandler(this.tsmiAbout_Click);
             this.button1.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
-            this.button1.Location = new System.Drawing.Point(0x331, 0x25c);
+            this.button1.Location = new System.Drawing.Point(0x331, 0x264);
             this.button1.Name = "button1";
             this.button1.Size = new Size(0x4b, 0x17);
             this.button1.TabIndex = 2;
@@ -1514,29 +1533,43 @@
             this.panel1.Controls.Add(this.label19);
             this.panel1.Controls.Add(this.label21);
             this.panel1.Controls.Add(this.label20);
-            this.panel1.Location = new System.Drawing.Point(0x331, 0x1e1);
+            this.panel1.Location = new System.Drawing.Point(0x331, 0x1ed);
             this.panel1.Name = "panel1";
             this.panel1.Size = new Size(0x10b, 0x75);
             this.panel1.TabIndex = 0x11;
             this.label27.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             this.label27.AutoSize = true;
-            this.label27.Location = new System.Drawing.Point(0x331, 0x1d1);
+            this.label27.Location = new System.Drawing.Point(0x331, 0x1c8);
             this.label27.Name = "label27";
             this.label27.Size = new Size(0x58, 0x11);
             this.label27.TabIndex = 0x12;
             this.label27.Text = "Camera pos:";
             this.CameraPositionLabel.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             this.CameraPositionLabel.AutoSize = true;
-            this.CameraPositionLabel.Location = new System.Drawing.Point(880, 0x1d1);
+            this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1c8);
             this.CameraPositionLabel.Name = "CameraPositionLabel";
             this.CameraPositionLabel.Size = new Size(0x3a, 0x11);
             this.CameraPositionLabel.TabIndex = 0x13;
             this.CameraPositionLabel.Text = "{0, 0, 0}";
+            this.CameraSpeedHeaderLabel.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            this.CameraSpeedHeaderLabel.AutoSize = true;
+            this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x331, 0x1d9);
+            this.CameraSpeedHeaderLabel.Name = "CameraSpeedHeaderLabel";
+            this.CameraSpeedHeaderLabel.TabIndex = 0x14;
+            this.CameraSpeedHeaderLabel.Text = "Cam speed:";
+            this.CameraSpeedLabel.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            this.CameraSpeedLabel.AutoSize = true;
+            this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1d9);
+            this.CameraSpeedLabel.Name = "CameraSpeedLabel";
+            this.CameraSpeedLabel.TabIndex = 0x15;
+            this.CameraSpeedLabel.Text = "0";
             this.AllowDrop = true;
             base.AutoScaleMode = AutoScaleMode.None;
             base.ClientSize = new Size(0x43c, 0x27d);
             base.Controls.Add(this.Brickplacelabel);
             base.Controls.Add(this.BrickplaceStopButton);
+            base.Controls.Add(this.CameraSpeedLabel);
+            base.Controls.Add(this.CameraSpeedHeaderLabel);
             base.Controls.Add(this.CameraPositionLabel);
             base.Controls.Add(this.label27);
             base.Controls.Add(this.panel1);
@@ -1627,7 +1660,7 @@
         }
 
         public bool OpenWarning() =>
-            (this.edits.Count <= 0) || (MessageBox.Show("You have made changes in: " + string.Join(", ", this.edits) + "\n Do you want to discard these changes and load a new file anyway?", "Warning", MessageBoxButtons.YesNo) == DialogResult.Yes);
+            (this.edits.Count <= 0) || (System.Windows.Forms.MessageBox.Show("You have made changes in: " + string.Join(", ", this.edits) + "\n Do you want to discard these changes and load a new file anyway?", "Warning", MessageBoxButtons.YesNo) == DialogResult.Yes);
 
         private void tsmiOptions_Click(object sender, EventArgs e)
         {
@@ -2065,9 +2098,10 @@
                 this.tsmiPowerupBricks.Size = new Size(0x9b, 0x16);
                 this.tsmiAIPaths.Size = new Size(0x9b, 0x16);
                 this.tsmiStaticObjects.Size = new Size(0x9b, 0x16);
+                this.tsmiAnimatedObjects.Size = new Size(0x9b, 0x16);
                 this.tsmiOptions.Size = new Size(70, 20);
                 this.tsmiAbout.Size = new Size(0x3d, 20);
-                this.button1.Location = new System.Drawing.Point(0x331, 0x25c);
+                this.button1.Location = new System.Drawing.Point(0x331, 0x264);
                 this.button1.Size = new Size(0x4b, 0x17);
                 this.tabControl1.Location = new System.Drawing.Point(0x331, 0x1a);
                 this.tabControl1.Size = new Size(0x10b, 0x19b);
@@ -2224,12 +2258,16 @@
                 this.label25.Size = new Size(0x66, 13);
                 this.label26.Location = new System.Drawing.Point(0x9d, 0x63);
                 this.label26.Size = new Size(0x6b, 13);
-                this.panel1.Location = new System.Drawing.Point(0x331, 0x1e1);
+                this.panel1.Location = new System.Drawing.Point(0x331, 0x1ed);
                 this.panel1.Size = new Size(0x10b, 0x75);
-                this.label27.Location = new System.Drawing.Point(0x331, 0x1d1);
+                this.label27.Location = new System.Drawing.Point(0x331, 0x1c8);
                 this.label27.Size = new Size(0x42, 13);
-                this.CameraPositionLabel.Location = new System.Drawing.Point(880, 0x1d1);
+                this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1c8);
                 this.CameraPositionLabel.Size = new Size(0x2d, 13);
+                this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x331, 0x1d9);
+                this.CameraSpeedHeaderLabel.Size = new Size(0x42, 13);
+                this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1d9);
+                this.CameraSpeedLabel.Size = new Size(0x2d, 13);
             }
             else if (this.currentDPI == 120f)
             {
@@ -2265,9 +2303,10 @@
                 this.tsmiPowerupBricks.Size = new Size(0xb8, 0x1a);
                 this.tsmiAIPaths.Size = new Size(0xb8, 0x1a);
                 this.tsmiStaticObjects.Size = new Size(0xb8, 0x1a);
+                this.tsmiAnimatedObjects.Size = new Size(0xb8, 0x1a);
                 this.tsmiOptions.Size = new Size(0x52, 0x18);
                 this.tsmiAbout.Size = new Size(0x47, 0x18);
-                this.button1.Location = new System.Drawing.Point(0x331, 0x25a);
+                this.button1.Location = new System.Drawing.Point(0x331, 0x267);
                 this.button1.Size = new Size(0x6a, 0x1b);
                 this.tabControl1.Location = new System.Drawing.Point(0x331, 0x1a);
                 this.tabControl1.Size = new Size(0x13b, 0x1a3);
@@ -2425,12 +2464,16 @@
                 this.label25.Size = new Size(0x89, 0x11);
                 this.label26.Location = new System.Drawing.Point(0xac, 0x71);
                 this.label26.Size = new Size(0x8f, 0x11);
-                this.panel1.Location = new System.Drawing.Point(0x331, 0x1d5);
+                this.panel1.Location = new System.Drawing.Point(0x32e, 0x1e1);
                 this.panel1.Size = new Size(0x137, 0x84);
-                this.label27.Location = new System.Drawing.Point(0x32e, 0x1bd);
+                this.label27.Location = new System.Drawing.Point(0x32e, 0x1b8);
                 this.label27.Size = new Size(0x58, 0x11);
-                this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1bd);
+                this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1b8);
                 this.CameraPositionLabel.Size = new Size(0x3a, 0x11);
+                this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x32e, 0x1c9);
+                this.CameraSpeedHeaderLabel.Size = new Size(0x58, 0x11);
+                this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1c9);
+                this.CameraSpeedLabel.Size = new Size(0x3a, 0x11);
             }
         }
 
@@ -2479,7 +2522,7 @@
             LR1TrackEditor.SKB objA = this.game.skb;
             if (objA is null)
             {
-                MessageBox.Show("Please open an SKB file before editing it", "Error");
+                System.Windows.Forms.MessageBox.Show("Please open an SKB file before editing it", "Error");
             }
             else
             {
@@ -2497,7 +2540,7 @@
                     }
                     else
                     {
-                        MessageBox.Show("Unknown int has an invalid value, please fixerino", "Error");
+                        System.Windows.Forms.MessageBox.Show("Unknown int has an invalid value, please fixerino", "Error");
                         return;
                     }
                 }
@@ -2551,6 +2594,7 @@
         {
             object[] args = new object[] { position.X, position.Y, position.Z };
             this.CameraPositionLabel.Text = string.Format(ci, "({0}, {1}, {2})", args);
+            this.CameraSpeedLabel.Text = string.Format(ci, "{0:F3}", InputHandler.flyspeed);
         }
 
         public bool PWBToolStripItemChecked

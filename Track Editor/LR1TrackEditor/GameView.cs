@@ -36,6 +36,7 @@
         public bool doDrawRRB = true;
         public bool doDrawSKB = true;
         public bool doDrawStaticObj = false;
+        public bool doDrawAnimObj = false;
         public LR1TrackEditor.Model loadedmodel = null;
         public string currentGDBfile = "";
         public string currentPWBfile = "";
@@ -53,7 +54,7 @@
         public List<RRBFile> rrbs = new List<RRBFile>();
         public int editingRRBindex = -1;
         private string gamedir = "";
-        private IntPtr drawsurface = IntPtr.Zero;
+        public IntPtr drawsurface = IntPtr.Zero;
         private IntPtr pctdrawsurface = IntPtr.Zero;
         private Size pctsize;
         private Size surfacesize;
@@ -120,7 +121,6 @@
         {
             Matrix matrix;
             LRVector3 position;
-            List<EffectPass>.Enumerator enumerator;
             this.basicEffect.World = Matrix.Identity;
             base.GraphicsDevice.DepthStencilState = DepthStencilState.Default;
             Microsoft.Xna.Framework.Color color = new Microsoft.Xna.Framework.Color((int)LR1TrackEditor.Settings.Default.BackgroundColor.R, (int)LR1TrackEditor.Settings.Default.BackgroundColor.G, (int)LR1TrackEditor.Settings.Default.BackgroundColor.B);
@@ -133,19 +133,10 @@
             if (!flag)
             {
                 base.GraphicsDevice.RasterizerState = RasterizerState.CullClockwise;
-                using (enumerator = this.backgrnd.CurrentTechnique.Passes.GetEnumerator())
+                foreach (EffectPass pass in this.backgrnd.CurrentTechnique.Passes)
                 {
-                    while (true)
-                    {
-                        flag = enumerator.MoveNext();
-                        if (!flag)
-                        {
-                            break;
-                        }
-                        EffectPass current = enumerator.Current;
-                        current.Apply();
-                        base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.TriangleStrip, this.skbmesh, 0, this.skbmesh.Length - 2, VertexPTC.VertexDeclaration);
-                    }
+                    pass.Apply();
+                    base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.TriangleStrip, this.skbmesh, 0, this.skbmesh.Length - 2, VertexPTC.VertexDeclaration);
                 }
             }
             base.GraphicsDevice.RasterizerState = this.rasterizerstate;
@@ -244,18 +235,10 @@
                         flag = !current.display;
                         if (!flag)
                         {
-                            using (enumerator = this.basicEffect.CurrentTechnique.Passes.GetEnumerator())
+                            foreach (EffectPass pass in this.basicEffect.CurrentTechnique.Passes)
                             {
-                                while (true)
-                                {
-                                    flag = enumerator.MoveNext();
-                                    if (!flag)
-                                    {
-                                        break;
-                                    }
-                                    enumerator.Current.Apply();
-                                    base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineStrip, current.points.ToArray(), 0, current.points.Count - 1, VertexPTC.VertexDeclaration);
-                                }
+                                pass.Apply();
+                                base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineStrip, current.points.ToArray(), 0, current.points.Count - 1, VertexPTC.VertexDeclaration);
                             }
                         }
                     }
@@ -284,6 +267,35 @@
                                 Vector3 vector4 = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
                                 matrix = new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, vector4.X, vector4.Y, vector4.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
                                 this.models[current.Key].Draw(this, this.basicEffect, matrix, null);
+                            }
+                        }
+                    }
+                }
+                flag = !this.doDrawAnimObj;
+                if (!flag)
+                {
+                    using (Dictionary<string, WDB_AnimatedModel>.Enumerator enumerator4 = this.wdb.AnimatedModels.GetEnumerator())
+                    {
+                        while (true)
+                        {
+                            flag = enumerator4.MoveNext();
+                            if (!flag)
+                            {
+                                break;
+                            }
+                            KeyValuePair<string, WDB_AnimatedModel> current = enumerator4.Current;
+                            if (current.Value.ModelRef != null && current.Value.ModelRef.IndexGDB.HasValue && this.wdb.GDB2s.Length > current.Value.ModelRef.IndexGDB.Value)
+                            {
+                                string gdbName = this.wdb.GDB2s[current.Value.ModelRef.IndexGDB.Value];
+                                if (this.models.ContainsKey(gdbName))
+                                {
+                                    position = current.Value.Position;
+                                    LRVector3 rotationFwd = current.Value.RotationFwd;
+                                    LRVector3 rotationUp = current.Value.RotationUp;
+                                    Vector3 vector4 = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
+                                    matrix = new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, vector4.X, vector4.Y, vector4.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
+                                    this.models[gdbName].Draw(this, this.basicEffect, matrix, null);
+                                }
                             }
                         }
                     }
@@ -354,7 +366,6 @@
             e.GraphicsDeviceInformation.PresentationParameters.DeviceWindowHandle = this.drawsurface;
             e.GraphicsDeviceInformation.PresentationParameters.BackBufferWidth = this.surfacesize.Width;
             e.GraphicsDeviceInformation.PresentationParameters.BackBufferHeight = this.surfacesize.Height;
-            Mouse.WindowHandle = this.drawsurface;
         }
 
         protected override void Initialize()
@@ -485,7 +496,16 @@
                 str4 = Path.Combine(Path.GetDirectoryName(this.currentGDBfile), "TEST.WDB");
                 if (File.Exists(str4))
                 {
-                    this.wdb = Loader.loadWDB(this, str4);
+                    try
+                    {
+                        this.wdb = Loader.loadWDB(this, str4);
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load WDB: " + ex.Message, ConsoleColor.Red);
+                        this.wdb = null;
+                        this.form.staticObjectsToolStripItemChecked = false;
+                    }
                 }
             }
             this.form.SetTabControlEnabled(true);
@@ -674,7 +694,6 @@
                 this.width = presentationParameters.BackBufferWidth = this.surfacesize.Width;
                 this.height = presentationParameters.BackBufferHeight = this.surfacesize.Height;
                 this.graphics.GraphicsDevice.Reset(presentationParameters);
-                Mouse.WindowHandle = this.drawsurface;
                 this.basicEffect.Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(LR1TrackEditor.Settings.Default.FoV), ((float)this.width) / ((float)this.height), 1f, LR1TrackEditor.Settings.Default.RenderDistance);
             }
         }
@@ -691,7 +710,7 @@
                 this.width = presentationParameters.BackBufferWidth = this.pctsize.Width;
                 this.height = presentationParameters.BackBufferHeight = this.pctsize.Height;
                 this.graphics.GraphicsDevice.Reset(presentationParameters);
-                Mouse.WindowHandle = this.pctdrawsurface;
+                this.drawsurface = this.pctdrawsurface;
                 this.mouselock = false;
                 base.IsMouseVisible = true;
                 this.gameform.Hide();
@@ -704,8 +723,8 @@
                 this.width = presentationParameters.BackBufferWidth = this.gameform.Size.Width;
                 this.height = presentationParameters.BackBufferHeight = this.gameform.Size.Height;
                 this.graphics.GraphicsDevice.Reset(presentationParameters);
-                Mouse.WindowHandle = this.drawsurface;
-                Mouse.SetPosition(this.width / 2, this.height / 2);
+                this.drawsurface = this.gameform.Handle;
+                MouseHelper.SetPosition(this.drawsurface, this.width / 2, this.height / 2);
                 base.IsMouseVisible = false;
                 this.mouselock = true;
             }

@@ -400,6 +400,13 @@
             {
                 game.models[str2] = loadmodel(game, Path.Combine(directoryName, str2 + ".gdb"), false);
             }
+            foreach (string str2 in wdb.GDB2s)
+            {
+                if (!game.models.ContainsKey(str2))
+                {
+                    game.models[str2] = loadmodel(game, Path.Combine(directoryName, str2 + ".gdb"), false);
+                }
+            }
             return wdb;
         }
 
