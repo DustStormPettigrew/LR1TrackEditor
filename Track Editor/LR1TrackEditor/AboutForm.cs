@@ -9,7 +9,7 @@
 
     public class AboutForm : Form
     {
-        private IContainer components = null;
+        private readonly IContainer components = null;
         private Label label1;
         private Label versionLabel;
         private LinkLabel linkLabel1;

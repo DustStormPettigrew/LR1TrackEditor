@@ -17,7 +17,9 @@
         private static readonly Dictionary<Keys, bool> pressed = new Dictionary<Keys, bool>();
         private static bool clicked = false;
         private static bool justplaced = false;
-        private static float flyspeed = LR1TrackEditor.Settings.Default.FlySpeed;
+        private static readonly float[] speedSteps = { 0.25f, 0.5f, 1f, 2f, 3f, 5f, 10f, 15f, 20f, 30f };
+        private static int speedIndex = 3; // default = 2
+        public static float flyspeed = speedSteps[3];
         public static FormEditor form;
         private static Point dragstart = new Point();
         private static int dragaxis;
@@ -159,7 +161,7 @@
 
         public static void handleinput(GameView game)
         {
-            if (!game.IsActive || (!form.ContainsFocus && !game.gameFormFocused))
+            if (!form.ContainsFocus && !game.gameFormFocused)
             {
                 if (game.mouselock)
                 {
@@ -172,8 +174,8 @@
                 if (!form.TabControlFocused)
                 {
                     RasterizerState state3;
-                    KeyboardState state = Keyboard.GetState();
-                    MouseState state2 = Mouse.GetState();
+                    KeyboardState state = KeyboardHelper.GetState();
+                    MouseState state2 = MouseHelper.GetState(game.drawsurface);
                     if (game.mouselock)
                     {
                         game.Pitch += ((game.height / 2) - state2.Y) * 0.001f;
@@ -194,7 +196,7 @@
                         {
                             game.Yaw += 2f;
                         }
-                        Mouse.SetPosition(game.width / 2, game.height / 2);
+                        MouseHelper.SetPosition(game.drawsurface, game.width / 2, game.height / 2);
                         if (!(!state.IsKeyDown(Keys.Escape) || holdingright))
                         {
                             if (game.fullscreen)
@@ -208,16 +210,6 @@
                                 Console.WriteLine("Mouse unlocked");
                             }
                         }
-                        if (state2.ScrollWheelValue != lastscrollvalue)
-                        {
-                            int num = state2.ScrollWheelValue - lastscrollvalue;
-                            flyspeed += ((float)num) / 1000f;
-                            if (flyspeed < 0f)
-                            {
-                                flyspeed = 0f;
-                            }
-                            Console.WriteLine("FlySpeed=" + flyspeed);
-                        }
                         if ((state2.RightButton == ButtonState.Released) && holdingright)
                         {
                             holdingright = false;
@@ -230,7 +222,7 @@
                         if (state2.RightButton == ButtonState.Pressed)
                         {
                             holdingright = true;
-                            Mouse.SetPosition(game.width / 2, game.height / 2);
+                            MouseHelper.SetPosition(game.drawsurface, game.width / 2, game.height / 2);
                             game.IsMouseVisible = false;
                             game.mouselock = true;
                         }
@@ -385,6 +377,20 @@
                         game.rasterizerstate = state3;
                         Console.WriteLine("Fillmode=" + state3.FillMode.ToString());
                     }
+                    if (state2.ScrollWheelValue != lastscrollvalue)
+                    {
+                        int num = state2.ScrollWheelValue - lastscrollvalue;
+                        if (num > 0 && speedIndex < speedSteps.Length - 1)
+                        {
+                            speedIndex++;
+                        }
+                        else if (num < 0 && speedIndex > 0)
+                        {
+                            speedIndex--;
+                        }
+                        flyspeed = speedSteps[speedIndex];
+                        Console.WriteLine("FlySpeed=" + flyspeed);
+                    }
                     lastscrollvalue = state2.ScrollWheelValue;
                 }
                 if (isKeyPressed(Keys.Delete) && ((game.editmode == 1) && (game.SelectedBrickIndices.Count > 0)))
@@ -397,14 +403,14 @@
         private static bool isKeyPressed(Keys key)
         {
             bool flag;
-            if (!(!Keyboard.GetState().IsKeyDown(key) || (pressed.ContainsKey(key) && pressed[key])))
+            if (!(!KeyboardHelper.GetState().IsKeyDown(key) || (pressed.ContainsKey(key) && pressed[key])))
             {
                 pressed[key] = true;
                 flag = true;
             }
             else
             {
-                if (Keyboard.GetState().IsKeyUp(key))
+                if (KeyboardHelper.GetState().IsKeyUp(key))
                 {
                     pressed[key] = false;
                 }

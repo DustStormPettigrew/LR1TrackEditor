@@ -79,7 +79,7 @@
             Func<RRBFile, bool> predicate = null;
             System.Windows.Forms.OpenFileDialog ofd = new System.Windows.Forms.OpenFileDialog
             {
-                Filter = "3D Objects|*.GDB|Powerups|*.PWB|AI Paths|*.RRB|3D Scenes|*.WDB",
+                Filter = "Track Files|*.RAB|3D Objects|*.GDB|Powerups|*.PWB|AI Paths|*.RRB|3D Scenes|*.WDB",
                 FilterIndex = filterindex,
                 Multiselect = false,
                 CheckFileExists = true
@@ -88,12 +88,39 @@
             DialogResult result = STAShowDialog(ofd);
             if (game.mouselock)
             {
-                Mouse.SetPosition(game.width / 2, game.height / 2);
+                MouseHelper.SetPosition(game.drawsurface, game.width / 2, game.height / 2);
                 game.IsMouseVisible = false;
             }
             if (result == DialogResult.OK)
             {
-                if (ofd.FileName.EndsWith("GDB", StringComparison.InvariantCultureIgnoreCase))
+                if (ofd.FileName.EndsWith("RAB", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    game.pwb = null;
+                    game.wdb = null;
+                    game.spb = null;
+                    game.cpb = null;
+                    game.hzb = null;
+                    game.embs.Clear();
+                    game.rrbs.Clear();
+                    game.loadedmodel?.vertexbuffer.Dispose();
+                    game.loadedmodel = null;
+                    form.refreshPWB(false);
+                    form.ClearEdits(null);
+
+                    // Set up gamedir and core powerup models if not already loaded
+                    Loader.ensureGamedir(game, ofd.FileName);
+
+                    // loadRAB handles everything: materials, WDB (with all GDBs), SKB, PWB, SPB, CPB, HZB, EMB
+                    // The track mesh is a WDB static object, so enable static objects by default
+                    Loader.loadRAB(game, ofd.FileName);
+
+                    game.track = true;
+                    form.refreshSKB();
+                    form.refreshWDB();
+                    form.staticObjectsToolStripItemChecked = game.wdb != null;
+                    form.SetTabControlEnabled(true);
+                }
+                else if (ofd.FileName.EndsWith("GDB", StringComparison.InvariantCultureIgnoreCase))
                 {
                     game.pwb = null;
                     form.refreshPWB(false);
@@ -125,7 +152,7 @@
                     }
                     if (game.rrbs.Where<RRBFile>(predicate).Count<RRBFile>() != 0)
                     {
-                        MessageBox.Show("That RRB file is already loaded.", "Notice");
+                        System.Windows.Forms.MessageBox.Show("That RRB file is already loaded.", "Notice");
                     }
                     else
                     {

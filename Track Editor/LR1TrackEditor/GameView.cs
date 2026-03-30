@@ -37,10 +37,15 @@
         public bool doDrawSKB = true;
         public bool doDrawStaticObj = false;
         public bool doDrawAnimObj = false;
+        public bool doDrawSPB = true;
+        public bool doDrawCPB = true;
+        public bool doDrawHZB = true;
+        public bool doDrawEMB = true;
         public LR1TrackEditor.Model loadedmodel = null;
         public string currentGDBfile = "";
         public string currentPWBfile = "";
         public string currentWDBfile = "";
+        public string currentRABfile = "";
         public Dictionary<string, Material> materials = new Dictionary<string, Material>();
         public Dictionary<string, LR1TrackEditor.Model> models = new Dictionary<string, LR1TrackEditor.Model>();
         public string currentmatfile = "";
@@ -51,9 +56,14 @@
         public PWB pwb = null;
         public LR1TrackEditor.SKB skb = null;
         public WDB wdb = null;
+        public RAB rab = null;
+        public SPB spb = null;
+        public CPB cpb = null;
+        public HZB hzb = null;
+        public List<EMB> embs = new List<EMB>();
         public List<RRBFile> rrbs = new List<RRBFile>();
         public int editingRRBindex = -1;
-        private string gamedir = "";
+        public string gamedir = "";
         public IntPtr drawsurface = IntPtr.Zero;
         private IntPtr pctdrawsurface = IntPtr.Zero;
         private Size pctsize;
@@ -249,6 +259,8 @@
                 flag = !this.doDrawStaticObj;
                 if (!flag)
                 {
+                    // Track which GDB indices are referenced by static models
+                    HashSet<int> referencedGDBIndices = new HashSet<int>();
                     using (Dictionary<string, WDB_StaticModel>.Enumerator enumerator3 = this.wdb.StaticModels.GetEnumerator())
                     {
                         while (true)
@@ -259,15 +271,29 @@
                                 break;
                             }
                             KeyValuePair<string, WDB_StaticModel> current = enumerator3.Current;
-                            if (this.models.ContainsKey(current.Key))
+                            string gdbName = null;
+                            if (current.Value.ModelRef != null && current.Value.ModelRef.IndexGDB >= 0 && current.Value.ModelRef.IndexGDB < this.wdb.GDBs.Length)
+                            {
+                                gdbName = this.wdb.GDBs[current.Value.ModelRef.IndexGDB];
+                                referencedGDBIndices.Add(current.Value.ModelRef.IndexGDB);
+                            }
+                            if (gdbName != null && this.models.ContainsKey(gdbName))
                             {
                                 position = current.Value.Position;
                                 LRVector3 rotationFwd = current.Value.RotationFwd;
                                 LRVector3 rotationUp = current.Value.RotationUp;
                                 Vector3 vector4 = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
                                 matrix = new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, vector4.X, vector4.Y, vector4.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
-                                this.models[current.Key].Draw(this, this.basicEffect, matrix, null);
+                                this.models[gdbName].Draw(this, this.basicEffect, matrix, null);
                             }
+                        }
+                    }
+                    // Draw GDBs not referenced by any static model at origin (e.g. track mesh)
+                    for (int i = 0; i < this.wdb.GDBs.Length; i++)
+                    {
+                        if (!referencedGDBIndices.Contains(i) && this.models.ContainsKey(this.wdb.GDBs[i]))
+                        {
+                            this.models[this.wdb.GDBs[i]].Draw(this, this.basicEffect);
                         }
                     }
                 }
@@ -301,7 +327,162 @@
                     }
                 }
             }
+            // Draw SPB start positions
+            if (this.spb != null && this.doDrawSPB && this.spb.StartPositions != null)
+            {
+                List<Vector3> positions = new List<Vector3>();
+                List<Vector3> directions = new List<Vector3>();
+                foreach (var kvp in this.spb.StartPositions)
+                {
+                    SPB_StartPosition sp = kvp.Value;
+                    positions.Add(new Vector3(sp.Position.X, sp.Position.Y, sp.Position.Z));
+                    if (sp.Orientation != null && sp.Orientation.Length >= 3)
+                    {
+                        directions.Add(new Vector3(sp.Orientation[0], sp.Orientation[1], sp.Orientation[2]));
+                    }
+                    else
+                    {
+                        directions.Add(Vector3.Zero);
+                    }
+                }
+                DrawPositionMarkers(positions, new Microsoft.Xna.Framework.Color(0, 255, 0), 5f);
+                // Draw direction lines from start positions
+                if (directions.Count == positions.Count)
+                {
+                    this.basicEffect.TextureEnabled = false;
+                    this.basicEffect.VertexColorEnabled = true;
+                    List<VertexPTC> dirLines = new List<VertexPTC>();
+                    for (int i = 0; i < positions.Count; i++)
+                    {
+                        if (directions[i] != Vector3.Zero)
+                        {
+                            dirLines.Add(new VertexPTC(positions[i], new Microsoft.Xna.Framework.Color(0, 200, 0)));
+                            dirLines.Add(new VertexPTC(positions[i] + directions[i] * 15f, new Microsoft.Xna.Framework.Color(0, 200, 0)));
+                        }
+                    }
+                    if (dirLines.Count >= 2)
+                    {
+                        foreach (EffectPass pass in this.basicEffect.CurrentTechnique.Passes)
+                        {
+                            pass.Apply();
+                            base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineList, dirLines.ToArray(), 0, dirLines.Count / 2, VertexPTC.VertexDeclaration);
+                        }
+                    }
+                }
+            }
+
+            // Draw CPB checkpoints
+            if (this.cpb != null && this.doDrawCPB && this.cpb.Checkpoints != null)
+            {
+                List<Vector3> positions = new List<Vector3>();
+                List<Vector3> normals = new List<Vector3>();
+                foreach (CPB_Checkpoint cp in this.cpb.Checkpoints)
+                {
+                    positions.Add(new Vector3(cp.Location.X, cp.Location.Y, cp.Location.Z));
+                    if (cp.Direction != null && cp.Direction.Normal != null)
+                    {
+                        normals.Add(new Vector3(cp.Direction.Normal.X, cp.Direction.Normal.Y, cp.Direction.Normal.Z));
+                    }
+                    else
+                    {
+                        normals.Add(Vector3.Zero);
+                    }
+                }
+                DrawPositionMarkers(positions, new Microsoft.Xna.Framework.Color(255, 255, 0), 8f);
+                // Draw checkpoint direction normals
+                this.basicEffect.TextureEnabled = false;
+                this.basicEffect.VertexColorEnabled = true;
+                List<VertexPTC> normLines = new List<VertexPTC>();
+                for (int i = 0; i < positions.Count; i++)
+                {
+                    if (normals[i] != Vector3.Zero)
+                    {
+                        normLines.Add(new VertexPTC(positions[i], new Microsoft.Xna.Framework.Color(200, 200, 0)));
+                        normLines.Add(new VertexPTC(positions[i] + normals[i] * 20f, new Microsoft.Xna.Framework.Color(200, 200, 0)));
+                    }
+                }
+                if (normLines.Count >= 2)
+                {
+                    foreach (EffectPass pass in this.basicEffect.CurrentTechnique.Passes)
+                    {
+                        pass.Apply();
+                        base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineList, normLines.ToArray(), 0, normLines.Count / 2, VertexPTC.VertexDeclaration);
+                    }
+                }
+            }
+
+            // Draw HZB hazard positions
+            if (this.hzb != null && this.doDrawHZB && this.hzb.Entries != null)
+            {
+                List<Vector3> positions = new List<Vector3>();
+                foreach (HZB_Entry entry in this.hzb.Entries)
+                {
+                    if (entry.PathData != null)
+                    {
+                        if (entry.PathData.Position1 != null)
+                            positions.Add(new Vector3(entry.PathData.Position1.X, entry.PathData.Position1.Y, entry.PathData.Position1.Z));
+                        if (entry.PathData.HasPosition2)
+                            positions.Add(new Vector3(entry.PathData.Position2.X, entry.PathData.Position2.Y, entry.PathData.Position2.Z));
+                        if (entry.PathData.HasPosition3)
+                            positions.Add(new Vector3(entry.PathData.Position3.X, entry.PathData.Position3.Y, entry.PathData.Position3.Z));
+                    }
+                    if (entry.SpinningData != null && entry.SpinningData.HasPosition)
+                    {
+                        positions.Add(new Vector3(entry.SpinningData.Position.X, entry.SpinningData.Position.Y, entry.SpinningData.Position.Z));
+                    }
+                    if (entry.WaterZoneData != null && entry.WaterZoneData.Path != null && entry.WaterZoneData.Path.Position1 != null)
+                    {
+                        positions.Add(new Vector3(entry.WaterZoneData.Path.Position1.X, entry.WaterZoneData.Path.Position1.Y, entry.WaterZoneData.Path.Position1.Z));
+                    }
+                }
+                DrawPositionMarkers(positions, new Microsoft.Xna.Framework.Color(255, 50, 50), 6f);
+            }
+
+            // Draw EMB emitter positions
+            if (this.embs.Count > 0 && this.doDrawEMB)
+            {
+                List<Vector3> positions = new List<Vector3>();
+                foreach (EMB emb in this.embs)
+                {
+                    if (emb.Emitters == null) continue;
+                    foreach (var kvp in emb.Emitters)
+                    {
+                        EMB_Emitter em = kvp.Value;
+                        if (em.Positions != null)
+                        {
+                            foreach (LRVector3 pos2 in em.Positions)
+                            {
+                                positions.Add(new Vector3(pos2.X, pos2.Y, pos2.Z));
+                            }
+                        }
+                    }
+                }
+                DrawPositionMarkers(positions, new Microsoft.Xna.Framework.Color(0, 200, 255), 4f);
+            }
+
             base.Draw(gameTime);
+        }
+
+        private void DrawPositionMarkers(List<Vector3> positions, Microsoft.Xna.Framework.Color color, float size)
+        {
+            if (positions.Count == 0) return;
+            this.basicEffect.TextureEnabled = false;
+            this.basicEffect.VertexColorEnabled = true;
+            List<VertexPTC> lines = new List<VertexPTC>();
+            foreach (Vector3 pos in positions)
+            {
+                lines.Add(new VertexPTC(pos + new Vector3(-size, 0, 0), color));
+                lines.Add(new VertexPTC(pos + new Vector3(size, 0, 0), color));
+                lines.Add(new VertexPTC(pos + new Vector3(0, -size, 0), color));
+                lines.Add(new VertexPTC(pos + new Vector3(0, size, 0), color));
+                lines.Add(new VertexPTC(pos + new Vector3(0, 0, -size), color));
+                lines.Add(new VertexPTC(pos + new Vector3(0, 0, size), color));
+            }
+            foreach (EffectPass pass in this.basicEffect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineList, lines.ToArray(), 0, lines.Count / 2, VertexPTC.VertexDeclaration);
+            }
         }
 
         private void DrawMoveArrows(Vector3 pos)

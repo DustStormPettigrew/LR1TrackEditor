@@ -92,17 +92,10 @@
                             basicEffect.Alpha = ((float)game.materials[current.material].alpha) / 255f;
                             basicEffect.AmbientLightColor = Utils.vectorfromcolor(game.materials[current.material].ambientcolor);
                         }
-                        using (List<EffectPass>.Enumerator enumerator2 = basicEffect.CurrentTechnique.Passes.GetEnumerator())
+                        foreach (EffectPass pass in basicEffect.CurrentTechnique.Passes)
                         {
-                            while (true)
-                            {
-                                if (!enumerator2.MoveNext())
-                                {
-                                    break;
-                                }
-                                enumerator2.Current.Apply();
-                                game.GraphicsDevice.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, current.vertexstart, current.numvertices, current.indexstart * 3, current.numindices);
-                            }
+                            pass.Apply();
+                            game.GraphicsDevice.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, current.indexstart * 3, current.numindices);
                         }
                     }
                 }
@@ -134,17 +127,10 @@
             input.Add(new VertexPTC(corners[6], Color.White));
             input.Add(new VertexPTC(corners[3], Color.White));
             input.Add(new VertexPTC(corners[7], Color.White));
-            using (List<EffectPass>.Enumerator enumerator = basicEffect.CurrentTechnique.Passes.GetEnumerator())
+            foreach (EffectPass pass in basicEffect.CurrentTechnique.Passes)
             {
-                while (true)
-                {
-                    if (!enumerator.MoveNext())
-                    {
-                        break;
-                    }
-                    enumerator.Current.Apply();
-                    game.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineList, input.ToArray(), 0, 12, VertexPTC.VertexDeclaration);
-                }
+                pass.Apply();
+                game.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineList, input.ToArray(), 0, 12, VertexPTC.VertexDeclaration);
             }
         }
 
@@ -207,17 +193,10 @@
                             basicEffect.Alpha = ((float)game.materials[current.material].alpha) / 255f;
                             basicEffect.AmbientLightColor = Utils.vectorfromcolor(game.materials[current.material].ambientcolor);
                         }
-                        using (List<EffectPass>.Enumerator enumerator2 = basicEffect.CurrentTechnique.Passes.GetEnumerator())
+                        foreach (EffectPass pass in basicEffect.CurrentTechnique.Passes)
                         {
-                            while (true)
-                            {
-                                if (!enumerator2.MoveNext())
-                                {
-                                    break;
-                                }
-                                enumerator2.Current.Apply();
-                                game.GraphicsDevice.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, current.vertexstart, current.numvertices, current.indexstart * 3, current.numindices);
-                            }
+                            pass.Apply();
+                            game.GraphicsDevice.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, current.indexstart * 3, current.numindices);
                         }
                     }
                     index++;

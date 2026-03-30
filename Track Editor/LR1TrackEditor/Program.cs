@@ -10,16 +10,23 @@
         private const int SW_HIDE = 0;
         private const int SW_SHOW = 8;
 
+        [DllImport("kernel32.dll")]
+        private static extern bool AllocConsole();
+
+        [DllImport("kernel32.dll")]
+        private static extern bool FreeConsole();
+
         [STAThread]
         private static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            if (!Settings.Default.ShowConsole)
+            if (Settings.Default.ShowConsole)
             {
-                ShowWindow(Process.GetCurrentProcess().MainWindowHandle, 0);
+                AllocConsole();
+                Console.Title = "Console window";
             }
-            Console.Title = "Console window";
+            MouseHelper.Install();
             bool flag = (args.Length > 0) && (args[0] == "-fullscreen");
             GameView game = new GameView();
             try

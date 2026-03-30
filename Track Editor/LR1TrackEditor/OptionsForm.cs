@@ -9,9 +9,9 @@
 
     public class OptionsForm : Form
     {
-        private static CultureInfo ci = CultureInfo.InvariantCulture;
-        private FormEditor parentform;
-        private IContainer components = null;
+        private readonly static CultureInfo ci = CultureInfo.InvariantCulture;
+        private readonly FormEditor parentform;
+        private readonly IContainer components = null;
         private TrackBar trackBar1;
         private Label label2;
         private TextBox textBox1;

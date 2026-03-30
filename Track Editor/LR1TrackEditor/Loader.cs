@@ -390,12 +390,268 @@
             return new LR1TrackEditor.SKB(skbpath);
         }
 
+        public static SPB loadSPB(string spbpath)
+        {
+            Utils.WriteLine("Loading SPB: " + spbpath, ConsoleColor.Green);
+            return new SPB(spbpath);
+        }
+
+        public static CPB loadCPB(string cpbpath)
+        {
+            Utils.WriteLine("Loading CPB: " + cpbpath, ConsoleColor.Yellow);
+            return new CPB(cpbpath);
+        }
+
+        public static HZB loadHZB(string hzbpath)
+        {
+            Utils.WriteLine("Loading HZB: " + hzbpath, ConsoleColor.Red);
+            return new HZB(hzbpath);
+        }
+
+        public static EMB loadEMB(string embpath)
+        {
+            Utils.WriteLine("Loading EMB: " + embpath, ConsoleColor.DarkCyan);
+            return new EMB(embpath);
+        }
+
+        /// <summary>
+        /// Resolves a RAB file reference to a real file path.
+        /// RAB references may have explicit extensions or need common ones tried.
+        /// </summary>
+        private static string ResolveRABPath(string directory, string reference, params string[] fallbackExtensions)
+        {
+            if (reference == null) return null;
+
+            // Try exact path first
+            string path = Path.Combine(directory, reference);
+            if (File.Exists(path)) return path;
+
+            // Try without extension + fallback extensions
+            string baseName = Path.GetFileNameWithoutExtension(reference);
+            foreach (string ext in fallbackExtensions)
+            {
+                path = Path.Combine(directory, baseName + ext);
+                if (File.Exists(path)) return path;
+            }
+
+            return null;
+        }
+
+        public static void ensureGamedir(GameView game, string filepath)
+        {
+            if (game.gamedir == "")
+            {
+                game.gamedir = Utils.getGamedir(filepath);
+                if (game.gamedir != "")
+                {
+                    string commonDir = Path.Combine(game.gamedir, "GAMEDATA", "COMMON");
+                    string pubricky = Path.Combine(commonDir, "PUBRICKY.GDB");
+                    if (File.Exists(pubricky))
+                    {
+                        Console.WriteLine("Gamedir found at " + game.gamedir);
+                        Console.WriteLine("Loading powerup models/textures");
+                        game.pupbrick = loadmodel(game, pubricky, false);
+                        game.enhabrick = loadmodel(game, Path.Combine(commonDir, "ENHABRIK.GDB"), false);
+                        foreach (var kvp in loadmaterials(Path.Combine(commonDir, "POWERUP.MDB"), game.GraphicsDevice))
+                        {
+                            game.corematerials[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+            }
+        }
+
+        public static void loadRAB(GameView game, string rabpath)
+        {
+            Utils.WriteLine("Loading RAB: " + rabpath, ConsoleColor.White);
+            RAB rab = new RAB(rabpath);
+            game.rab = rab;
+            game.currentRABfile = rabpath;
+
+            string dir = Path.GetDirectoryName(rabpath);
+            string gamedir = Utils.getGamedir(rabpath);
+            string commonDir = (gamedir != "") ? Path.Combine(gamedir, "GAMEDATA", "COMMON") : null;
+            RAB_Track track = rab.Track;
+
+            // Load materials and WDB scene
+            if (track.MaybeTrackScene != null)
+            {
+                string wdbPath = ResolveRABPath(dir, track.MaybeTrackScene, ".WDB", ".WDF");
+                if (wdbPath != null)
+                {
+                    // Load materials first (same name as WDB)
+                    string mdbName = Path.GetFileNameWithoutExtension(wdbPath) + ".MDB";
+                    string mdbPath = Path.Combine(dir, mdbName);
+                    string tdbPath = Path.Combine(dir, Path.GetFileNameWithoutExtension(wdbPath) + ".TDB");
+                    if (File.Exists(mdbPath) && File.Exists(tdbPath))
+                    {
+                        game.materials.Clear();
+                        foreach (var kvp in loadmaterials(mdbPath, game.GraphicsDevice))
+                        {
+                            game.materials[kvp.Key] = kvp.Value;
+                        }
+                        game.currentmatfile = mdbPath;
+                    }
+                    else
+                    {
+                        // Try COMBINED.MDB
+                        mdbPath = Path.Combine(dir, "COMBINED.MDB");
+                        tdbPath = Path.Combine(dir, "COMBINED.TDB");
+                        if (File.Exists(mdbPath) && File.Exists(tdbPath))
+                        {
+                            game.materials.Clear();
+                            foreach (var kvp in loadmaterials(mdbPath, game.GraphicsDevice))
+                            {
+                                game.materials[kvp.Key] = kvp.Value;
+                            }
+                            game.currentmatfile = mdbPath;
+                        }
+                    }
+
+                    try
+                    {
+                        game.wdb = loadWDB(game, wdbPath);
+                        game.currentWDBfile = wdbPath;
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load WDB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
+            // Load skybox
+            if (track.SkyBoxFile != null)
+            {
+                string skbPath = ResolveRABPath(dir, track.SkyBoxFile, ".SKB");
+                if (skbPath != null)
+                {
+                    try
+                    {
+                        game.skb = loadSKB(skbPath);
+                        SKB_Gradient gradient = game.skb.Gradients[game.skb.Default];
+                        game.skbmesh = Utils.GenerateSKBMesh(
+                            new Microsoft.Xna.Framework.Color(gradient.Color1.R, gradient.Color1.G, gradient.Color1.B),
+                            new Microsoft.Xna.Framework.Color(gradient.Color2.R, gradient.Color2.G, gradient.Color2.B),
+                            new Microsoft.Xna.Framework.Color(gradient.Color3.R, gradient.Color3.G, gradient.Color3.B));
+                        game.form.refreshSKB();
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load SKB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
+            // Load powerups (need core models first)
+            if (track.PowerupFiles != null && track.PowerupFiles.Length > 0)
+            {
+                string pwbPath = ResolveRABPath(dir, track.PowerupFiles[0], ".PWB", ".PWF");
+                if (pwbPath != null)
+                {
+                    try
+                    {
+                        game.pwb = loadPWB(game, pwbPath);
+                        if (game.pwb != null)
+                        {
+                            game.form.PWBToolStripItemChecked = true;
+                            game.form.refreshPWB(false);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load PWB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
+            // Load start positions
+            if (track.StartPosFile != null)
+            {
+                string spbPath = ResolveRABPath(dir, track.StartPosFile, ".SPB", ".SPF");
+                if (spbPath != null)
+                {
+                    try
+                    {
+                        game.spb = loadSPB(spbPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load SPB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
+            // Load checkpoints
+            if (track.CheckpointFiles != null && track.CheckpointFiles.Length > 0)
+            {
+                string cpbPath = ResolveRABPath(dir, track.CheckpointFiles[0], ".CPB", ".CPF");
+                if (cpbPath != null)
+                {
+                    try
+                    {
+                        game.cpb = loadCPB(cpbPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load CPB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
+            // Load hazards
+            if (track.HazardFile != null)
+            {
+                string hzbPath = ResolveRABPath(dir, track.HazardFile, ".HZB", ".HZF");
+                if (hzbPath != null)
+                {
+                    try
+                    {
+                        game.hzb = loadHZB(hzbPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load HZB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
+            // Load emitters
+            game.embs.Clear();
+            if (track.EmitterFiles != null)
+            {
+                foreach (string emRef in track.EmitterFiles)
+                {
+                    if (emRef == null) continue;
+                    // Track-specific emitters are in level dir, global ones in COMMON
+                    string embPath = ResolveRABPath(dir, emRef, ".EMB", ".EMT");
+                    if (embPath == null && commonDir != null)
+                    {
+                        embPath = ResolveRABPath(commonDir, emRef, ".EMB", ".EMT");
+                    }
+                    if (embPath != null)
+                    {
+                        try
+                        {
+                            game.embs.Add(loadEMB(embPath));
+                        }
+                        catch (Exception ex)
+                        {
+                            Utils.WriteLine("Failed to load EMB: " + ex.Message, ConsoleColor.Red);
+                        }
+                    }
+                }
+            }
+        }
+
         public static WDB loadWDB(GameView game, string wdbpath)
         {
             WDB wdb = new WDB(wdbpath);
             Utils.WriteLine("Loading WDB: " + wdbpath, ConsoleColor.Magenta);
             game.models.Clear();
             string directoryName = Path.GetDirectoryName(wdbpath);
+            Utils.WriteLine("WDB GDBs[" + wdb.GDBs.Length + "]: " + string.Join(", ", wdb.GDBs), ConsoleColor.Magenta);
+            Utils.WriteLine("WDB GDB2s[" + wdb.GDB2s.Length + "]: " + string.Join(", ", wdb.GDB2s), ConsoleColor.Magenta);
             foreach (string str2 in wdb.GDBs)
             {
                 game.models[str2] = loadmodel(game, Path.Combine(directoryName, str2 + ".gdb"), false);
@@ -406,6 +662,12 @@
                 {
                     game.models[str2] = loadmodel(game, Path.Combine(directoryName, str2 + ".gdb"), false);
                 }
+            }
+            foreach (var kvp in wdb.StaticModels)
+            {
+                string refGdb = (kvp.Value.ModelRef != null && kvp.Value.ModelRef.IndexGDB >= 0 && kvp.Value.ModelRef.IndexGDB < wdb.GDBs.Length)
+                    ? wdb.GDBs[kvp.Value.ModelRef.IndexGDB] : "null";
+                Utils.WriteLine("  Static: " + kvp.Key + " -> GDB index " + (kvp.Value.ModelRef?.IndexGDB.ToString() ?? "null") + " = " + refGdb, ConsoleColor.DarkMagenta);
             }
             return wdb;
         }

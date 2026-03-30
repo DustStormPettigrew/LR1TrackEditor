@@ -142,6 +142,10 @@
         private CheckBox RRBEditCheckBox;
         private Label rightclickmelabel;
         private ImageList imageList1;
+        private ToolStripMenuItem tsmiStartPositions;
+        private ToolStripMenuItem tsmiCheckpoints;
+        private ToolStripMenuItem tsmiHazards;
+        private ToolStripMenuItem tsmiEmitters;
 
         public FormEditor(GameView game)
         {
@@ -541,6 +545,26 @@
                 this.game.doDrawAnimObj = item.Checked;
                 Console.WriteLine("Animated objects " + str);
             }
+            else if (sender == this.tsmiStartPositions)
+            {
+                this.game.doDrawSPB = item.Checked;
+                Console.WriteLine("Start positions " + str);
+            }
+            else if (sender == this.tsmiCheckpoints)
+            {
+                this.game.doDrawCPB = item.Checked;
+                Console.WriteLine("Checkpoints " + str);
+            }
+            else if (sender == this.tsmiHazards)
+            {
+                this.game.doDrawHZB = item.Checked;
+                Console.WriteLine("Hazards " + str);
+            }
+            else if (sender == this.tsmiEmitters)
+            {
+                this.game.doDrawEMB = item.Checked;
+                Console.WriteLine("Emitters " + str);
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -663,6 +687,10 @@
             this.tsmiAIPaths = new ToolStripMenuItem();
             this.tsmiStaticObjects = new ToolStripMenuItem();
             this.tsmiAnimatedObjects = new ToolStripMenuItem();
+            this.tsmiStartPositions = new ToolStripMenuItem();
+            this.tsmiCheckpoints = new ToolStripMenuItem();
+            this.tsmiHazards = new ToolStripMenuItem();
+            this.tsmiEmitters = new ToolStripMenuItem();
             this.tsmiOptions = new ToolStripMenuItem();
             this.tsmiAbout = new ToolStripMenuItem();
             this.button1 = new Button();
@@ -847,7 +875,7 @@
             this.tsmiEdit.Name = "tsmiEdit";
             this.tsmiEdit.Size = new Size(0x2f, 0x18);
             this.tsmiEdit.Text = "&Edit";
-            ToolStripItem[] viewToolStripItems = new ToolStripItem[] { this.tsmiSkybox, this.tsmiTextures, this.tsmiVertexColors, this.tssView1, this.tsmiPowerupBricks, this.tsmiAIPaths, this.tsmiStaticObjects, this.tsmiAnimatedObjects };
+            ToolStripItem[] viewToolStripItems = new ToolStripItem[] { this.tsmiSkybox, this.tsmiTextures, this.tsmiVertexColors, this.tssView1, this.tsmiPowerupBricks, this.tsmiAIPaths, this.tsmiStaticObjects, this.tsmiAnimatedObjects, this.tsmiStartPositions, this.tsmiCheckpoints, this.tsmiHazards, this.tsmiEmitters };
             this.tsmiView.DropDownItems.AddRange(viewToolStripItems);
             this.tsmiView.Name = "tsmiView";
             this.tsmiView.Size = new Size(0x35, 0x18);
@@ -904,6 +932,38 @@
             this.tsmiAnimatedObjects.Size = new Size(0xb8, 0x1a);
             this.tsmiAnimatedObjects.Text = "A&nimated objects";
             this.tsmiAnimatedObjects.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
+            this.tsmiStartPositions.Checked = true;
+            this.tsmiStartPositions.CheckOnClick = true;
+            this.tsmiStartPositions.CheckState = CheckState.Checked;
+            this.tsmiStartPositions.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            this.tsmiStartPositions.Name = "tsmiStartPositions";
+            this.tsmiStartPositions.Size = new Size(0xb8, 0x1a);
+            this.tsmiStartPositions.Text = "Start &positions";
+            this.tsmiStartPositions.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
+            this.tsmiCheckpoints.Checked = true;
+            this.tsmiCheckpoints.CheckOnClick = true;
+            this.tsmiCheckpoints.CheckState = CheckState.Checked;
+            this.tsmiCheckpoints.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            this.tsmiCheckpoints.Name = "tsmiCheckpoints";
+            this.tsmiCheckpoints.Size = new Size(0xb8, 0x1a);
+            this.tsmiCheckpoints.Text = "&Checkpoints";
+            this.tsmiCheckpoints.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
+            this.tsmiHazards.Checked = true;
+            this.tsmiHazards.CheckOnClick = true;
+            this.tsmiHazards.CheckState = CheckState.Checked;
+            this.tsmiHazards.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            this.tsmiHazards.Name = "tsmiHazards";
+            this.tsmiHazards.Size = new Size(0xb8, 0x1a);
+            this.tsmiHazards.Text = "&Hazards";
+            this.tsmiHazards.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
+            this.tsmiEmitters.Checked = true;
+            this.tsmiEmitters.CheckOnClick = true;
+            this.tsmiEmitters.CheckState = CheckState.Checked;
+            this.tsmiEmitters.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            this.tsmiEmitters.Name = "tsmiEmitters";
+            this.tsmiEmitters.Size = new Size(0xb8, 0x1a);
+            this.tsmiEmitters.Text = "&Emitters";
+            this.tsmiEmitters.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
             this.tsmiOptions.Name = "tsmiOptions";
             this.tsmiOptions.Size = new Size(0x52, 0x18);
             this.tsmiOptions.Text = "&Options...";
