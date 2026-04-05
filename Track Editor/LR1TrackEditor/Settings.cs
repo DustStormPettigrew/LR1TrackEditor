@@ -96,6 +96,78 @@
                 this["AutoloadObject"] = value;
         }
 
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
+        public bool TrackLoadRacerPaths
+        {
+            get =>
+                (bool)this["TrackLoadRacerPaths"];
+            set =>
+                this["TrackLoadRacerPaths"] = value;
+        }
+
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
+        public bool TrackLoadPowerups
+        {
+            get =>
+                (bool)this["TrackLoadPowerups"];
+            set =>
+                this["TrackLoadPowerups"] = value;
+        }
+
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
+        public bool TrackLoadSkybox
+        {
+            get =>
+                (bool)this["TrackLoadSkybox"];
+            set =>
+                this["TrackLoadSkybox"] = value;
+        }
+
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
+        public bool TrackLoadStartPositions
+        {
+            get =>
+                (bool)this["TrackLoadStartPositions"];
+            set =>
+                this["TrackLoadStartPositions"] = value;
+        }
+
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
+        public bool TrackLoadCheckpoints
+        {
+            get =>
+                (bool)this["TrackLoadCheckpoints"];
+            set =>
+                this["TrackLoadCheckpoints"] = value;
+        }
+
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
+        public bool TrackLoadHazards
+        {
+            get =>
+                (bool)this["TrackLoadHazards"];
+            set =>
+                this["TrackLoadHazards"] = value;
+        }
+
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
+        public bool TrackLoadEmitters
+        {
+            get =>
+                (bool)this["TrackLoadEmitters"];
+            set =>
+                this["TrackLoadEmitters"] = value;
+        }
+
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("False")]
+        public bool TrackLoadCollisionGeometry
+        {
+            get =>
+                (bool)this["TrackLoadCollisionGeometry"];
+            set =>
+                this["TrackLoadCollisionGeometry"] = value;
+        }
+
         [UserScopedSetting, DebuggerNonUserCode, DefaultSettingValue("True")]
         public bool ShowConsole
         {

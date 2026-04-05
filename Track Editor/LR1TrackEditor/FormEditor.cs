@@ -146,6 +146,7 @@
         private ToolStripMenuItem tsmiCheckpoints;
         private ToolStripMenuItem tsmiHazards;
         private ToolStripMenuItem tsmiEmitters;
+        private ToolStripMenuItem tsmiCollisionGeometry;
 
         public FormEditor(GameView game)
         {
@@ -171,6 +172,7 @@
             this.tsmiVertexColors.Checked = Settings.Default.doVertexColors;
             this.tsmiPowerupBricks.Checked = Settings.Default.AutoloadPowerup;
             this.tsmiStaticObjects.Checked = Settings.Default.AutoloadObject;
+            this.tsmiCollisionGeometry.Checked = game.doDrawCollision;
             base.Size = Settings.Default.FormSize;
         }
 
@@ -565,6 +567,11 @@
                 this.game.doDrawEMB = item.Checked;
                 Console.WriteLine("Emitters " + str);
             }
+            else if (sender == this.tsmiCollisionGeometry)
+            {
+                this.game.doDrawCollision = item.Checked;
+                Console.WriteLine("Collision geometry " + str);
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -691,6 +698,7 @@
             this.tsmiCheckpoints = new ToolStripMenuItem();
             this.tsmiHazards = new ToolStripMenuItem();
             this.tsmiEmitters = new ToolStripMenuItem();
+            this.tsmiCollisionGeometry = new ToolStripMenuItem();
             this.tsmiOptions = new ToolStripMenuItem();
             this.tsmiAbout = new ToolStripMenuItem();
             this.button1 = new Button();
@@ -875,7 +883,7 @@
             this.tsmiEdit.Name = "tsmiEdit";
             this.tsmiEdit.Size = new Size(0x2f, 0x18);
             this.tsmiEdit.Text = "&Edit";
-            ToolStripItem[] viewToolStripItems = new ToolStripItem[] { this.tsmiSkybox, this.tsmiTextures, this.tsmiVertexColors, this.tssView1, this.tsmiPowerupBricks, this.tsmiAIPaths, this.tsmiStaticObjects, this.tsmiAnimatedObjects, this.tsmiStartPositions, this.tsmiCheckpoints, this.tsmiHazards, this.tsmiEmitters };
+            ToolStripItem[] viewToolStripItems = new ToolStripItem[] { this.tsmiSkybox, this.tsmiTextures, this.tsmiVertexColors, this.tssView1, this.tsmiPowerupBricks, this.tsmiAIPaths, this.tsmiStaticObjects, this.tsmiAnimatedObjects, this.tsmiCollisionGeometry, this.tsmiStartPositions, this.tsmiCheckpoints, this.tsmiHazards, this.tsmiEmitters };
             this.tsmiView.DropDownItems.AddRange(viewToolStripItems);
             this.tsmiView.Name = "tsmiView";
             this.tsmiView.Size = new Size(0x35, 0x18);
@@ -932,6 +940,12 @@
             this.tsmiAnimatedObjects.Size = new Size(0xb8, 0x1a);
             this.tsmiAnimatedObjects.Text = "A&nimated objects";
             this.tsmiAnimatedObjects.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
+            this.tsmiCollisionGeometry.CheckOnClick = true;
+            this.tsmiCollisionGeometry.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            this.tsmiCollisionGeometry.Name = "tsmiCollisionGeometry";
+            this.tsmiCollisionGeometry.Size = new Size(0xb8, 0x1a);
+            this.tsmiCollisionGeometry.Text = "&Collision geometry";
+            this.tsmiCollisionGeometry.CheckedChanged += new EventHandler(this.displayToolStripMenuItem_CheckedChanged);
             this.tsmiStartPositions.Checked = true;
             this.tsmiStartPositions.CheckOnClick = true;
             this.tsmiStartPositions.CheckState = CheckState.Checked;
@@ -2159,6 +2173,7 @@
                 this.tsmiAIPaths.Size = new Size(0x9b, 0x16);
                 this.tsmiStaticObjects.Size = new Size(0x9b, 0x16);
                 this.tsmiAnimatedObjects.Size = new Size(0x9b, 0x16);
+                this.tsmiCollisionGeometry.Size = new Size(0x9b, 0x16);
                 this.tsmiOptions.Size = new Size(70, 20);
                 this.tsmiAbout.Size = new Size(0x3d, 20);
                 this.button1.Location = new System.Drawing.Point(0x331, 0x264);
@@ -2364,6 +2379,7 @@
                 this.tsmiAIPaths.Size = new Size(0xb8, 0x1a);
                 this.tsmiStaticObjects.Size = new Size(0xb8, 0x1a);
                 this.tsmiAnimatedObjects.Size = new Size(0xb8, 0x1a);
+                this.tsmiCollisionGeometry.Size = new Size(0xb8, 0x1a);
                 this.tsmiOptions.Size = new Size(0x52, 0x18);
                 this.tsmiAbout.Size = new Size(0x47, 0x18);
                 this.button1.Location = new System.Drawing.Point(0x331, 0x267);

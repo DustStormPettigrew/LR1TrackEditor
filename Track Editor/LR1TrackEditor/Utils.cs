@@ -95,16 +95,12 @@
             {
                 if (ofd.FileName.EndsWith("RAB", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    game.pwb = null;
-                    game.wdb = null;
-                    game.spb = null;
-                    game.cpb = null;
-                    game.hzb = null;
-                    game.embs.Clear();
-                    game.rrbs.Clear();
+                    game.ClearTrackData();
                     game.loadedmodel?.vertexbuffer.Dispose();
+                    game.loadedmodel?.indexbuffer.Dispose();
                     game.loadedmodel = null;
                     form.refreshPWB(false);
+                    form.refreshRRB();
                     form.ClearEdits(null);
 
                     // Set up gamedir and core powerup models if not already loaded
@@ -117,6 +113,7 @@
                     game.track = true;
                     form.refreshSKB();
                     form.refreshWDB();
+                    form.PWBToolStripItemChecked = game.pwb != null;
                     form.staticObjectsToolStripItemChecked = game.wdb != null;
                     form.SetTabControlEnabled(true);
                 }
@@ -156,7 +153,7 @@
                     }
                     else
                     {
-                        game.rrbs.Add(new RRBFile(Loader.loadRRB(ofd.FileName), ofd.FileName));
+                        game.rrbs.Add(Loader.loadRRBFile(ofd.FileName));
                         form.refreshRRB();
                     }
                 }

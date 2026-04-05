@@ -37,6 +37,7 @@
         public bool doDrawSKB = true;
         public bool doDrawStaticObj = false;
         public bool doDrawAnimObj = false;
+        public bool doDrawCollision = false;
         public bool doDrawSPB = true;
         public bool doDrawCPB = true;
         public bool doDrawHZB = true;
@@ -61,6 +62,7 @@
         public CPB cpb = null;
         public HZB hzb = null;
         public List<EMB> embs = new List<EMB>();
+        public List<LR1TrackEditor.Model> collisionModels = new List<LR1TrackEditor.Model>();
         public List<RRBFile> rrbs = new List<RRBFile>();
         public int editingRRBindex = -1;
         public string gamedir = "";
@@ -327,6 +329,19 @@
                     }
                 }
             }
+            if (this.collisionModels.Count > 0 && this.doDrawCollision)
+            {
+                Material collisionMaterial = new Material
+                {
+                    ambientcolor = new Microsoft.Xna.Framework.Color(255, 160, 64),
+                    diffusecolor = new Microsoft.Xna.Framework.Color(255, 160, 64),
+                    alpha = 180
+                };
+                foreach (LR1TrackEditor.Model collisionModel in this.collisionModels)
+                {
+                    collisionModel.Draw(this, this.basicEffect, Matrix.Identity, collisionMaterial);
+                }
+            }
             // Draw SPB start positions
             if (this.spb != null && this.doDrawSPB && this.spb.StartPositions != null)
             {
@@ -577,10 +592,9 @@
             Action<KeyValuePair<string, Material>> action2 = null;
             Action<KeyValuePair<string, Material>> action3 = null;
             this.form.ClearEdits(null);
-            this.pwb = null;
-            this.wdb = null;
-            this.rrbs.Clear();
-            this.loadedmodel?.vertexbuffer.Dispose();
+            this.ClearTrackData();
+            DisposeModelBuffers(this.loadedmodel);
+            this.loadedmodel = null;
             if (this.gamedir == "")
             {
                 string str;
@@ -712,6 +726,21 @@
 
         public void Reload()
         {
+            if (this.currentRABfile != "")
+            {
+                string rabpath = this.currentRABfile;
+                this.ClearTrackData();
+                this.form.refreshPWB(false);
+                this.form.refreshRRB();
+                Loader.loadRAB(this, rabpath);
+                this.track = true;
+                this.form.refreshSKB();
+                this.form.refreshWDB();
+                this.form.PWBToolStripItemChecked = this.pwb != null;
+                this.form.staticObjectsToolStripItemChecked = this.wdb != null;
+                this.form.SetTabControlEnabled(true);
+                return;
+            }
             if (this.currentGDBfile != "")
             {
                 this.currentmatfile = "";
@@ -735,9 +764,39 @@
                         }
                         RRBFile current = enumerator.Current;
                         current.rrbfile = Loader.loadRRB(current.filepath);
+                        current.generatePoints();
                     }
                 }
             }
+        }
+
+        private static void DisposeModelBuffers(LR1TrackEditor.Model model)
+        {
+            model?.vertexbuffer?.Dispose();
+            model?.indexbuffer?.Dispose();
+        }
+
+        public void ClearTrackData()
+        {
+            this.track = false;
+            this.rab = null;
+            this.pwb = null;
+            this.wdb = null;
+            this.spb = null;
+            this.cpb = null;
+            this.hzb = null;
+            this.skb = null;
+            this.skbmesh = null;
+            this.embs.Clear();
+            this.rrbs.Clear();
+            foreach (LR1TrackEditor.Model collisionModel in this.collisionModels)
+            {
+                DisposeModelBuffers(collisionModel);
+            }
+            this.collisionModels.Clear();
+            this.currentPWBfile = "";
+            this.currentWDBfile = "";
+            this.currentRABfile = "";
         }
 
         public void Select(int mousex, int mousey, bool multiselect)

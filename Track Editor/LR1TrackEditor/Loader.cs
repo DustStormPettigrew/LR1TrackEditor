@@ -10,7 +10,9 @@
     using System.Globalization;
     using System.IO;
     using System.Linq;
+    using System.Reflection;
     using System.Runtime.InteropServices;
+    using System.Text.RegularExpressions;
 
     public static class Loader
     {
@@ -19,6 +21,7 @@
         public const byte PROPERTY_VERTEX_META = 0x31;
         public const byte PROPERTY_BONE_ID = 50;
         public static CultureInfo ci = CultureInfo.InvariantCulture;
+        private static readonly Regex NpcPathFileNameRegex = new Regex(@"^R(?<racer>[0-5])_[A-Z]_(?<path>\d+)\.RRB$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static List<Block> getBlocks(GDB_Meta[] input)
         {
@@ -335,6 +338,42 @@
             return model;
         }
 
+        private static LR1TrackEditor.Model loadCollisionBVB(GameView game, string bvbPath)
+        {
+            Utils.WriteLine("Loading BVB: " + bvbPath, ConsoleColor.DarkYellow);
+            BVB bvb = new BVB(bvbPath);
+            LR1TrackEditor.Model model = new LR1TrackEditor.Model
+            {
+                normals = false,
+                scale = 1f
+            };
+
+            Microsoft.Xna.Framework.Color color = new Microsoft.Xna.Framework.Color(255, 160, 64);
+            model.verticesC = bvb.Vertices.Select(vertex => new VertexPTC(vertex.toXNAVector(), color)).ToArray();
+            model.numvertices = model.verticesC.Length;
+            model.indices = new ushort[bvb.Polygons.Length * 3];
+
+            for (int i = 0; i < bvb.Polygons.Length; i++)
+            {
+                BVB_Polygon polygon = bvb.Polygons[i];
+                model.indices[(i * 3)] = (ushort)polygon.V0;
+                model.indices[(i * 3) + 1] = (ushort)polygon.V1;
+                model.indices[(i * 3) + 2] = (ushort)polygon.V2;
+            }
+
+            model.parts.Add(new ModelPart
+            {
+                material = null,
+                indexstart = 0,
+                vertexstart = 0,
+                numvertices = model.numvertices,
+                numindices = bvb.Polygons.Length
+            });
+            model.CreateBuffers(game.GraphicsDevice);
+            model.generateBoundingBox(false);
+            return model;
+        }
+
         public static PWB loadPWB(GameView game, string pwbpath)
         {
             Action<KeyValuePair<string, Material>> action = null;
@@ -382,6 +421,16 @@
         {
             Utils.WriteLine("Loading RRB: " + rrbpath, ConsoleColor.Yellow);
             return new RRB(rrbpath);
+        }
+
+        public static RRBFile loadRRBFile(string rrbpath)
+        {
+            RRBFile file = new RRBFile(loadRRB(rrbpath), rrbpath)
+            {
+                color = GetRRBColor(rrbpath)
+            };
+            file.generatePoints();
+            return file;
         }
 
         public static LR1TrackEditor.SKB loadSKB(string skbpath)
@@ -437,6 +486,199 @@
             return null;
         }
 
+        private static bool TryParseNpcRRBFileName(string filepath, out int racerIndex, out int pathIndex)
+        {
+            Match match = NpcPathFileNameRegex.Match(Path.GetFileName(filepath));
+            if (!match.Success)
+            {
+                racerIndex = 0;
+                pathIndex = 0;
+                return false;
+            }
+
+            racerIndex = int.Parse(match.Groups["racer"].Value, CultureInfo.InvariantCulture);
+            pathIndex = int.Parse(match.Groups["path"].Value, CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        private static Microsoft.Xna.Framework.Color LightenColor(Microsoft.Xna.Framework.Color color, float amount)
+        {
+            byte Lighten(byte channel) => (byte)Math.Clamp((int)Math.Round(channel + ((255 - channel) * amount)), 0, 255);
+            return new Microsoft.Xna.Framework.Color(Lighten(color.R), Lighten(color.G), Lighten(color.B));
+        }
+
+        private static Microsoft.Xna.Framework.Color DarkenColor(Microsoft.Xna.Framework.Color color, float amount)
+        {
+            byte Darken(byte channel) => (byte)Math.Clamp((int)Math.Round(channel * (1f - amount)), 0, 255);
+            return new Microsoft.Xna.Framework.Color(Darken(color.R), Darken(color.G), Darken(color.B));
+        }
+
+        private static Microsoft.Xna.Framework.Color GetNpcBaseColor(int racerIndex)
+        {
+            switch (racerIndex)
+            {
+                case 1:
+                    return new Microsoft.Xna.Framework.Color(160, 160, 160);
+
+                case 2:
+                    return new Microsoft.Xna.Framework.Color(224, 64, 64);
+
+                case 3:
+                    return new Microsoft.Xna.Framework.Color(255, 220, 0);
+
+                case 4:
+                    return new Microsoft.Xna.Framework.Color(48, 192, 96);
+
+                case 5:
+                    return new Microsoft.Xna.Framework.Color(64, 128, 255);
+            }
+            return Microsoft.Xna.Framework.Color.White;
+        }
+
+        private static Microsoft.Xna.Framework.Color GetRRBColor(string rrbpath)
+        {
+            if (!TryParseNpcRRBFileName(rrbpath, out int racerIndex, out int pathIndex))
+            {
+                return Microsoft.Xna.Framework.Color.White;
+            }
+
+            Microsoft.Xna.Framework.Color baseColor = GetNpcBaseColor(racerIndex);
+            switch (pathIndex)
+            {
+                case 1:
+                    return LightenColor(baseColor, 0.35f);
+
+                case 2:
+                    return DarkenColor(baseColor, 0.35f);
+
+                default:
+                    return baseColor;
+            }
+        }
+
+        private static IEnumerable<string> GetRABTrackStringValues(RAB_Track track)
+        {
+            foreach (FieldInfo field in typeof(RAB_Track).GetFields(BindingFlags.Instance | BindingFlags.Public))
+            {
+                if (field.FieldType == typeof(string))
+                {
+                    string value = field.GetValue(track) as string;
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        yield return value;
+                    }
+                }
+                else if (field.FieldType == typeof(string[]))
+                {
+                    string[] values = field.GetValue(track) as string[];
+                    if (values == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (string value in values)
+                    {
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            yield return value;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> FindNpcRRBPaths(string directory, RAB_Track track)
+        {
+            HashSet<string> paths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+            List<string> orderedPaths = new List<string>();
+
+            foreach (string reference in GetRABTrackStringValues(track))
+            {
+                string resolvedPath = ResolveRABPath(directory, reference, ".RRB");
+                if ((resolvedPath != null) &&
+                    Path.GetExtension(resolvedPath).Equals(".RRB", StringComparison.InvariantCultureIgnoreCase) &&
+                    TryParseNpcRRBFileName(resolvedPath, out int racerIndex, out _) &&
+                    (racerIndex >= 1) &&
+                    (racerIndex <= 5) &&
+                    paths.Add(resolvedPath))
+                {
+                    orderedPaths.Add(resolvedPath);
+                }
+            }
+
+            foreach (string path in Directory.EnumerateFiles(directory, "*.RRB"))
+            {
+                if (TryParseNpcRRBFileName(path, out int racerIndex, out _) &&
+                    (racerIndex >= 1) &&
+                    (racerIndex <= 5) &&
+                    paths.Add(path))
+                {
+                    orderedPaths.Add(path);
+                }
+            }
+
+            foreach (string path in orderedPaths
+                .OrderBy(path =>
+                {
+                    TryParseNpcRRBFileName(path, out int racerIndex, out int pathIndex);
+                    return racerIndex;
+                })
+                .ThenBy(path =>
+                {
+                    TryParseNpcRRBFileName(path, out int racerIndex, out int pathIndex);
+                    return pathIndex;
+                })
+                .ThenBy(path => Path.GetFileName(path), StringComparer.InvariantCultureIgnoreCase))
+            {
+                yield return path;
+            }
+        }
+
+        private static void LoadCollisionReference(GameView game, string directory, string collisionRef, HashSet<string> loadedPaths)
+        {
+            if (string.IsNullOrWhiteSpace(collisionRef))
+            {
+                return;
+            }
+
+            string wdbPath = ResolveRABPath(directory, collisionRef, ".WDB", ".WDF");
+            if (wdbPath != null && loadedPaths.Add(wdbPath))
+            {
+                WDB collisionScene = new WDB(wdbPath);
+                foreach (string gdbName in collisionScene.GDBs ?? Array.Empty<string>())
+                {
+                    string gdbPath = ResolveRABPath(directory, gdbName, ".GDB");
+                    if (gdbPath != null && loadedPaths.Add(gdbPath))
+                    {
+                        game.collisionModels.Add(loadmodel(game, gdbPath, false));
+                    }
+                }
+
+                foreach (string bvbName in collisionScene.BVBs ?? Array.Empty<string>())
+                {
+                    string bvbPath = ResolveRABPath(directory, bvbName, ".BVB");
+                    if (bvbPath != null && loadedPaths.Add(bvbPath))
+                    {
+                        game.collisionModels.Add(loadCollisionBVB(game, bvbPath));
+                    }
+                }
+                return;
+            }
+
+            string bvbDirectPath = ResolveRABPath(directory, collisionRef, ".BVB");
+            if (bvbDirectPath != null && loadedPaths.Add(bvbDirectPath))
+            {
+                game.collisionModels.Add(loadCollisionBVB(game, bvbDirectPath));
+                return;
+            }
+
+            string gdbDirectPath = ResolveRABPath(directory, collisionRef, ".GDB");
+            if (gdbDirectPath != null && loadedPaths.Add(gdbDirectPath))
+            {
+                game.collisionModels.Add(loadmodel(game, gdbDirectPath, false));
+            }
+        }
+
         public static void ensureGamedir(GameView game, string filepath)
         {
             if (game.gamedir == "")
@@ -472,6 +714,14 @@
             string gamedir = Utils.getGamedir(rabpath);
             string commonDir = (gamedir != "") ? Path.Combine(gamedir, "GAMEDATA", "COMMON") : null;
             RAB_Track track = rab.Track;
+            bool loadTrackSkybox = Settings.Default.TrackLoadSkybox;
+            bool loadTrackPowerups = Settings.Default.TrackLoadPowerups;
+            bool loadTrackStartPositions = Settings.Default.TrackLoadStartPositions;
+            bool loadTrackCheckpoints = Settings.Default.TrackLoadCheckpoints;
+            bool loadTrackHazards = Settings.Default.TrackLoadHazards;
+            bool loadTrackEmitters = Settings.Default.TrackLoadEmitters;
+            bool loadTrackRacerPaths = Settings.Default.TrackLoadRacerPaths;
+            bool loadTrackCollisionGeometry = Settings.Default.TrackLoadCollisionGeometry;
 
             // Load materials and WDB scene
             if (track.MaybeTrackScene != null)
@@ -520,8 +770,25 @@
                 }
             }
 
+            // Load collision geometry
+            if (loadTrackCollisionGeometry && track.MaybeCollisionMeshes != null)
+            {
+                HashSet<string> loadedCollisionPaths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+                foreach (string collisionRef in track.MaybeCollisionMeshes)
+                {
+                    try
+                    {
+                        LoadCollisionReference(game, dir, collisionRef, loadedCollisionPaths);
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load collision geometry: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
             // Load skybox
-            if (track.SkyBoxFile != null)
+            if (loadTrackSkybox && track.SkyBoxFile != null)
             {
                 string skbPath = ResolveRABPath(dir, track.SkyBoxFile, ".SKB");
                 if (skbPath != null)
@@ -544,7 +811,7 @@
             }
 
             // Load powerups (need core models first)
-            if (track.PowerupFiles != null && track.PowerupFiles.Length > 0)
+            if (loadTrackPowerups && track.PowerupFiles != null && track.PowerupFiles.Length > 0)
             {
                 string pwbPath = ResolveRABPath(dir, track.PowerupFiles[0], ".PWB", ".PWF");
                 if (pwbPath != null)
@@ -566,7 +833,7 @@
             }
 
             // Load start positions
-            if (track.StartPosFile != null)
+            if (loadTrackStartPositions && track.StartPosFile != null)
             {
                 string spbPath = ResolveRABPath(dir, track.StartPosFile, ".SPB", ".SPF");
                 if (spbPath != null)
@@ -583,7 +850,7 @@
             }
 
             // Load checkpoints
-            if (track.CheckpointFiles != null && track.CheckpointFiles.Length > 0)
+            if (loadTrackCheckpoints && track.CheckpointFiles != null && track.CheckpointFiles.Length > 0)
             {
                 string cpbPath = ResolveRABPath(dir, track.CheckpointFiles[0], ".CPB", ".CPF");
                 if (cpbPath != null)
@@ -600,7 +867,7 @@
             }
 
             // Load hazards
-            if (track.HazardFile != null)
+            if (loadTrackHazards && track.HazardFile != null)
             {
                 string hzbPath = ResolveRABPath(dir, track.HazardFile, ".HZB", ".HZF");
                 if (hzbPath != null)
@@ -618,7 +885,7 @@
 
             // Load emitters
             game.embs.Clear();
-            if (track.EmitterFiles != null)
+            if (loadTrackEmitters && track.EmitterFiles != null)
             {
                 foreach (string emRef in track.EmitterFiles)
                 {
@@ -642,6 +909,35 @@
                     }
                 }
             }
+
+            int importedNpcPaths = 0;
+            if (loadTrackRacerPaths)
+            {
+                foreach (string rrbPath in FindNpcRRBPaths(dir, track))
+                {
+                    if (game.rrbs.Any(x => string.Equals(x.filepath, rrbPath, StringComparison.InvariantCultureIgnoreCase)))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        game.rrbs.Add(loadRRBFile(rrbPath));
+                        importedNpcPaths++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load NPC RRB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
+            if (importedNpcPaths > 0)
+            {
+                Utils.WriteLine("Loaded NPC paths: " + importedNpcPaths, ConsoleColor.Yellow);
+            }
+
+            game.form.refreshRRB();
         }
 
         public static WDB loadWDB(GameView game, string wdbpath)
