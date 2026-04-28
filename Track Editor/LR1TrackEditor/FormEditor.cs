@@ -1065,6 +1065,7 @@
             this.tabControl1.Controls.Add(this.tabPage1);
             this.tabControl1.Enabled = false;
             this.tabControl1.Location = new System.Drawing.Point(0x331, 0x1a);
+            this.tabControl1.Multiline = true;
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new Size(0x10b, 0x19b);

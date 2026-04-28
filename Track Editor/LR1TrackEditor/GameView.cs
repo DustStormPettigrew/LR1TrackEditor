@@ -1063,6 +1063,53 @@
             };
         }
 
+        private int GetAnimationSequenceStep(AnimatedObjectPlayback playback)
+        {
+            if (playback?.Animation == null || playback.Animation.SequenceFrames.Count == 0)
+            {
+                return 0;
+            }
+
+            int logicalFrameCount = Math.Max(playback.Animation.LogicalFrameCount, 1);
+            int currentFrame = playback.GetCurrentFrameIndex();
+            if (logicalFrameCount <= 1 || playback.Animation.SequenceFrames.Count == 1)
+            {
+                return 0;
+            }
+
+            return Math.Min((currentFrame * playback.Animation.SequenceFrames.Count) / logicalFrameCount, playback.Animation.SequenceFrames.Count - 1);
+        }
+
+        private Material ResolveAnimatedOverrideMaterial(string baseMaterialName, MabFrameDefinition frame)
+        {
+            if (frame == null)
+            {
+                return null;
+            }
+
+            Material baseMaterial = null;
+            if (!string.IsNullOrWhiteSpace(baseMaterialName))
+            {
+                this.materials.TryGetValue(baseMaterialName, out baseMaterial);
+            }
+
+            if (baseMaterial != null &&
+                string.Equals(baseMaterialName, frame.MaterialName, StringComparison.InvariantCultureIgnoreCase))
+            {
+                return Loader.ResolveAnimatedMaterialFrame(baseMaterial, base.GraphicsDevice, frame.FrameIndex);
+            }
+
+            if (!string.IsNullOrWhiteSpace(frame.MaterialName) &&
+                this.materials.TryGetValue(frame.MaterialName, out Material swappedMaterial))
+            {
+                return swappedMaterial;
+            }
+
+            return baseMaterial == null
+                ? null
+                : Loader.ResolveAnimatedMaterialFrame(baseMaterial, base.GraphicsDevice, frame.FrameIndex);
+        }
+
         private Dictionary<string, Material> GetAnimatedMaterialOverrides(AnimatedObjectEntry entry)
         {
             if (entry == null || !this.animatedObjectPlaybacks.TryGetValue(entry.Id, out AnimatedObjectPlayback playback))
@@ -1070,22 +1117,38 @@
                 return null;
             }
 
-            List<MabFrameDefinition> frameMaterials = playback.Animation.GetPlaybackFrame(playback.GetCurrentFrameIndex());
-            if (frameMaterials.Count == 0)
+            List<string> animatedMaterials = entry.MaterialNames
+                .Where(name => !string.IsNullOrWhiteSpace(name) && playback.Animation.ReferencedMaterials.Contains(name))
+                .Distinct(StringComparer.InvariantCultureIgnoreCase)
+                .ToList();
+
+            if (animatedMaterials.Count == 0)
+            {
+                animatedMaterials = playback.Animation.SequenceFrames
+                    .Select(frame => frame.MaterialName)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Distinct(StringComparer.InvariantCultureIgnoreCase)
+                    .ToList();
+            }
+
+            if (animatedMaterials.Count == 0 || playback.Animation.SequenceFrames.Count == 0)
             {
                 return null;
             }
 
             Dictionary<string, Material> overrides = new Dictionary<string, Material>(StringComparer.InvariantCultureIgnoreCase);
-            foreach (MabFrameDefinition frame in frameMaterials)
+            int animationStep = this.GetAnimationSequenceStep(playback);
+            for (int materialIndex = 0; materialIndex < animatedMaterials.Count; materialIndex++)
             {
-                if (string.IsNullOrWhiteSpace(frame.MaterialName) || !this.materials.ContainsKey(frame.MaterialName))
+                MabFrameDefinition frame = playback.Animation.SequenceFrames[(animationStep + materialIndex) % playback.Animation.SequenceFrames.Count];
+                string baseMaterialName = animatedMaterials[materialIndex];
+                Material resolvedMaterial = this.ResolveAnimatedOverrideMaterial(baseMaterialName, frame);
+                if (resolvedMaterial == null)
                 {
                     continue;
                 }
 
-                Material sourceMaterial = this.materials[frame.MaterialName];
-                overrides[frame.MaterialName] = Loader.ResolveAnimatedMaterialFrame(sourceMaterial, base.GraphicsDevice, frame.FrameIndex);
+                overrides[baseMaterialName] = resolvedMaterial;
             }
 
             return overrides.Count == 0 ? null : overrides;
