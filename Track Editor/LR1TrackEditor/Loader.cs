@@ -565,7 +565,44 @@
                 if (File.Exists(path)) return path;
             }
 
+            foreach (string alias in GetAssetStemAliases(baseName))
+            {
+                foreach (string ext in fallbackExtensions)
+                {
+                    path = Path.Combine(directory, alias + ext);
+                    if (File.Exists(path)) return path;
+                }
+            }
+
             return null;
+        }
+
+        private static IEnumerable<string> GetAssetStemAliases(string stem)
+        {
+            if (string.IsNullOrWhiteSpace(stem))
+            {
+                yield break;
+            }
+
+            if (string.Equals(stem, "strtlne", StringComparison.InvariantCultureIgnoreCase))
+            {
+                yield return "startfin";
+                yield return "starfin";
+                yield break;
+            }
+
+            if (string.Equals(stem, "startfin", StringComparison.InvariantCultureIgnoreCase))
+            {
+                yield return "strtlne";
+                yield return "starfin";
+                yield break;
+            }
+
+            if (string.Equals(stem, "starfin", StringComparison.InvariantCultureIgnoreCase))
+            {
+                yield return "startfin";
+                yield return "strtlne";
+            }
         }
 
         private static bool TryParseNpcRRBFileName(string filepath, out int racerIndex, out int pathIndex)
@@ -1084,10 +1121,11 @@
             }
 
             // Load collision geometry
-            if (loadTrackCollisionGeometry && track.MaybeCollisionMeshes != null)
+            bool hasCheckpointCollision = track.CheckpointFiles != null && track.CheckpointFiles.Length > 1 && !string.IsNullOrWhiteSpace(track.CheckpointFiles[1]);
+            if (loadTrackCollisionGeometry && (track.MaybeCollisionMeshes != null || hasCheckpointCollision))
             {
                 HashSet<string> loadedCollisionPaths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
-                foreach (string collisionRef in track.MaybeCollisionMeshes)
+                foreach (string collisionRef in track.MaybeCollisionMeshes ?? Array.Empty<string>())
                 {
                     try
                     {
@@ -1098,6 +1136,19 @@
                         Utils.WriteLine("Failed to load collision geometry: " + ex.Message, ConsoleColor.Red);
                     }
                 }
+
+                if (hasCheckpointCollision)
+                {
+                    try
+                    {
+                        LoadCollisionReference(game, dir, track.CheckpointFiles[1], loadedCollisionPaths);
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load checkpoint collision geometry: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+
                 Utils.WriteLine("Loaded collision meshes: " + game.collisionModels.Count.ToString(CultureInfo.InvariantCulture), ConsoleColor.DarkYellow);
             }
             else if (!loadTrackCollisionGeometry && track.MaybeCollisionMeshes != null && track.MaybeCollisionMeshes.Length > 0)
