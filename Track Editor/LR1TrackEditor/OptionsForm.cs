@@ -66,11 +66,11 @@
             this.checkBoxTrackSkybox.Checked = Settings.Default.TrackLoadSkybox;
             this.pictureBox1.BackColor = Settings.Default.BackgroundColor;
             this.textBox1.Text = Settings.Default.RenderDistance.ToString(ci);
-            this.trackBar1.Value = (int)Math.Min(Settings.Default.RenderDistance, (float)this.trackBar1.Maximum);
+            this.trackBar1.Value = Math.Max(this.trackBar1.Minimum, Math.Min((int)Settings.Default.RenderDistance, this.trackBar1.Maximum));
             this.textBox2.Text = Settings.Default.FlySpeed.ToString(ci);
-            this.trackBar2.Value = (int)Math.Min(Settings.Default.FlySpeed * 10f, (float)this.trackBar2.Maximum);
+            this.trackBar2.Value = Math.Max(this.trackBar2.Minimum, Math.Min((int)(Settings.Default.FlySpeed * 10f), this.trackBar2.Maximum));
             this.textBox3.Text = Settings.Default.FoV.ToString(ci);
-            this.trackBar3.Value = (int)Math.Min(Settings.Default.FoV, (float)this.trackBar3.Maximum);
+            this.trackBar3.Value = Math.Max(this.trackBar3.Minimum, Math.Min((int)Settings.Default.FoV, this.trackBar3.Maximum));
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -95,6 +95,7 @@
             Settings.Default.TrackLoadHazards = this.checkBoxTrackHazards.Checked;
             Settings.Default.TrackLoadSkybox = this.checkBoxTrackSkybox.Checked;
             Settings.Default.Save();
+            this.parentform.ApplyRuntimeSettings();
             Console.WriteLine("Settings saved.");
             base.Close();
         }

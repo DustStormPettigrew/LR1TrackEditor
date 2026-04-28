@@ -1,5 +1,6 @@
 ﻿namespace LR1TrackEditor
 {
+    using LibLR1;
     using LibLR1.Utils;
     using Microsoft.Xna.Framework;
     using Microsoft.Xna.Framework.Input;
@@ -20,8 +21,101 @@
 
         public static float? distanceToTriangle(Ray input)
         {
-            ushort[] indices = game.loadedmodel.indices;
-            List<Vector3> points = game.loadedmodel.GetPoints();
+            if (game.loadedmodel != null)
+            {
+                return DistanceToModel(input, game.loadedmodel, Matrix.Identity);
+            }
+
+            float? bestDistance = null;
+            if (game.wdb != null)
+            {
+                bestDistance = MinNullable(bestDistance, DistanceToScene(input, game.wdb));
+            }
+
+            foreach (WDB scene in game.extraWdbScenes)
+            {
+                bestDistance = MinNullable(bestDistance, DistanceToScene(input, scene));
+            }
+
+            return bestDistance;
+        }
+
+        private static float? DistanceToScene(Ray input, WDB scene)
+        {
+            if (scene == null)
+            {
+                return null;
+            }
+
+            float? bestDistance = null;
+            HashSet<int> referencedGdbIndices = new HashSet<int>();
+            foreach (KeyValuePair<string, WDB_StaticModel> current in scene.StaticModels)
+            {
+                if (current.Value?.ModelRef == null)
+                {
+                    continue;
+                }
+
+                int gdbIndex = current.Value.ModelRef.IndexGDB;
+                if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                {
+                    continue;
+                }
+
+                string gdbName = scene.GDBs[gdbIndex];
+                if (!game.models.ContainsKey(gdbName))
+                {
+                    continue;
+                }
+
+                referencedGdbIndices.Add(gdbIndex);
+                bestDistance = MinNullable(bestDistance, DistanceToModel(input, game.models[gdbName], CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp)));
+            }
+
+            foreach (KeyValuePair<string, WDB_BDBModel> current in scene.BDBModels)
+            {
+                if (current.Value?.ModelRef == null)
+                {
+                    continue;
+                }
+
+                int gdbIndex = current.Value.ModelRef.IndexGDB;
+                if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                {
+                    continue;
+                }
+
+                string gdbName = scene.GDBs[gdbIndex];
+                if (!game.models.ContainsKey(gdbName))
+                {
+                    continue;
+                }
+
+                referencedGdbIndices.Add(gdbIndex);
+                bestDistance = MinNullable(bestDistance, DistanceToModel(input, game.models[gdbName], CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp)));
+            }
+
+            for (int i = 0; i < scene.GDBs.Length; i++)
+            {
+                if (!referencedGdbIndices.Contains(i) && game.models.ContainsKey(scene.GDBs[i]))
+                {
+                    bestDistance = MinNullable(bestDistance, DistanceToModel(input, game.models[scene.GDBs[i]], Matrix.Identity));
+                }
+            }
+
+            return bestDistance;
+        }
+
+        private static float? DistanceToModel(Ray input, LR1TrackEditor.Model model, Matrix transform)
+        {
+            if (model == null || model.indices == null || model.indices.Length < 3)
+            {
+                return null;
+            }
+
+            ushort[] indices = model.indices;
+            Matrix world = Matrix.CreateScale(model.scale) * transform;
+            List<Vector3> points = model.GetPoints().Select(point => Vector3.Transform(point, world)).ToList();
             float maxValue = float.MaxValue;
             int index = 0;
             while (true)
@@ -46,6 +140,27 @@
                 }
                 index += 3;
             }
+        }
+
+        private static float? MinNullable(float? current, float? candidate)
+        {
+            if (candidate == null)
+            {
+                return current;
+            }
+
+            if (current == null || candidate.Value < current.Value)
+            {
+                return candidate;
+            }
+
+            return current;
+        }
+
+        private static Matrix CreateWorldMatrix(LRVector3 position, LRVector3 rotationFwd, LRVector3 rotationUp)
+        {
+            Vector3 right = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
+            return new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, right.X, right.Y, right.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
         }
 
         public static VertexPTC[] GenerateSKBMesh(Color color1, Color color2, Color color3) =>

@@ -159,7 +159,7 @@
                 this["TrackLoadEmitters"] = value;
         }
 
-        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("False")]
+        [DebuggerNonUserCode, UserScopedSetting, DefaultSettingValue("True")]
         public bool TrackLoadCollisionGeometry
         {
             get =>

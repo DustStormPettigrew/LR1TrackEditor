@@ -41,6 +41,16 @@
 
         public void Draw(GameView game, BasicEffect basicEffect, Matrix transform, Material mat = null)
         {
+            this.Draw(game, basicEffect, transform, mat, null);
+        }
+
+        public void Draw(GameView game, BasicEffect basicEffect, Matrix transform, Material mat, Dictionary<string, Material> materialOverrides)
+        {
+            if (this.vertexbuffer == null || this.indexbuffer == null || this.parts.Count == 0)
+            {
+                return;
+            }
+
             basicEffect.World = Matrix.CreateScale(this.scale) * transform;
             basicEffect.VertexColorEnabled = !this.normals && game.doVertexColors;
             game.GraphicsDevice.Indices = this.indexbuffer;
@@ -80,17 +90,22 @@
                         }
                         else
                         {
-                            if ((game.materials[current.material].texture == null) || !game.doTextures)
+                            Material resolvedMaterial = game.materials[current.material];
+                            if (materialOverrides != null && materialOverrides.ContainsKey(current.material) && materialOverrides[current.material] != null)
+                            {
+                                resolvedMaterial = materialOverrides[current.material];
+                            }
+                            if ((resolvedMaterial.texture == null) || !game.doTextures)
                             {
                                 basicEffect.TextureEnabled = false;
                             }
                             else
                             {
                                 basicEffect.TextureEnabled = true;
-                                basicEffect.Texture = game.materials[current.material].texture;
+                                basicEffect.Texture = resolvedMaterial.texture;
                             }
-                            basicEffect.Alpha = ((float)game.materials[current.material].alpha) / 255f;
-                            basicEffect.AmbientLightColor = Utils.vectorfromcolor(game.materials[current.material].ambientcolor);
+                            basicEffect.Alpha = ((float)resolvedMaterial.alpha) / 255f;
+                            basicEffect.AmbientLightColor = Utils.vectorfromcolor(resolvedMaterial.ambientcolor);
                         }
                         foreach (EffectPass pass in basicEffect.CurrentTechnique.Passes)
                         {
@@ -136,6 +151,11 @@
 
         public void DrawMultiple(GameView game, BasicEffect basicEffect, Matrix[] transforms, Material[] mats = null)
         {
+            if (this.vertexbuffer == null || this.indexbuffer == null || this.parts.Count == 0)
+            {
+                return;
+            }
+
             game.GraphicsDevice.Indices = this.indexbuffer;
             game.GraphicsDevice.SetVertexBuffer(this.vertexbuffer);
             basicEffect.VertexColorEnabled = !this.normals;

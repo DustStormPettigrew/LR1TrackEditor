@@ -1,6 +1,7 @@
 ﻿namespace LR1TrackEditor
 {
     using LibLR1;
+    using LibLR1.Utils;
     using Microsoft.Xna.Framework;
     using Microsoft.Xna.Framework.Graphics;
     using System;
@@ -31,6 +32,10 @@
             ushort boneid = 0xffff;
             ushort vstart = length = 0;
             byte vertexoffset = 0;
+            if (input == null || input.Length == 0)
+            {
+                return list;
+            }
             foreach (GDB_Meta meta in input)
             {
                 if (meta.Type == 0x27)
@@ -65,141 +70,199 @@
             string str2 = Path.Combine(directoryName, Path.GetFileNameWithoutExtension(mdbpath) + ".TDB");
             Utils.WriteLine("Loading TDB: " + str2, ConsoleColor.DarkCyan);
             TDB tdb = new TDB(str2);
-            using (Dictionary<string, MDB_Material>.Enumerator enumerator = new MDB(mdbpath).Materials.GetEnumerator())
+            foreach (KeyValuePair<string, MDB_Material> current in new MDB(mdbpath).Materials)
             {
-                KeyValuePair<string, MDB_Material> current;
-                Material material2;
-                goto TR_0031;
-            TR_0005:
-                dictionary.Add(current.Key, material2);
-            TR_0031:
-                while (true)
+                MDB_Material material = current.Value;
+                Material material2 = new Material
                 {
-                    bool flag2 = enumerator.MoveNext();
-                    if (flag2)
+                    name = current.Key
+                };
+                if (material.Alpha != null)
+                {
+                    material2.alpha = (byte)material.Alpha.Value;
+                }
+                if (material.AmbientColor is object)
+                {
+                    material2.ambientcolor = new Microsoft.Xna.Framework.Color(material.AmbientColor.R, material.AmbientColor.G, material.AmbientColor.B, material.AmbientColor.A);
+                }
+                if (material.DiffuseColor is object)
+                {
+                    material2.diffusecolor = new Microsoft.Xna.Framework.Color(material.DiffuseColor.R, material.DiffuseColor.G, material.DiffuseColor.B, material.DiffuseColor.A);
+                }
+                if (!string.IsNullOrWhiteSpace(material.TextureName) && tdb.Textures.ContainsKey(material.TextureName))
+                {
+                    TDB_Texture texture = tdb.Textures[material.TextureName];
+                    material2.textureName = material.TextureName;
+                    material2.textureDirectory = directoryName;
+                    if (texture.HasColor2C)
                     {
-                        current = enumerator.Current;
-                        MDB_Material material = current.Value;
-                        material2 = new Material();
-                        if (material.Alpha != null)
-                        {
-                            material2.alpha = (byte)material.Alpha.Value;
-                        }
-                        if (material.AmbientColor is object)
-                        {
-                            material2.ambientcolor = new Microsoft.Xna.Framework.Color(material.AmbientColor.R, material.AmbientColor.G, material.AmbientColor.B, material.AmbientColor.A);
-                        }
-                        if (material.DiffuseColor is object)
-                        {
-                            material2.diffusecolor = new Microsoft.Xna.Framework.Color(material.DiffuseColor.R, material.DiffuseColor.G, material.DiffuseColor.B, material.DiffuseColor.A);
-                        }
-                        if (material.TextureName is object)
-                        {
-                            TDB_Texture texture = tdb.Textures[material.TextureName];
-                            if (!texture.IsBitmap)
-                            {
-                                Utils.WriteLine("Not loading TGA: " + Path.Combine(directoryName, material.TextureName + ".TGA"), ConsoleColor.Red);
-                            }
-                            else
-                            {
-                                string path = Path.Combine(directoryName, material.TextureName + ".BMP");
-                                if (File.Exists(path))
-                                {
-                                    Bitmap bitmap;
-                                    Image image;
-                                    MemoryStream stream;
-                                    BMP bmp = null;
-                                    bool flag = true;
-                                    try
-                                    {
-                                        bmp = new BMP(path);
-                                    }
-                                    catch (InvalidDataException)
-                                    {
-                                        flag = false;
-                                    }
-                                    if (!flag)
-                                    {
-                                        Utils.WriteLine("Loading Win BMP: " + path, ConsoleColor.DarkMagenta);
-                                        bitmap = new Bitmap(path);
-                                        if (texture.HasColor2C)
-                                        {
-                                            bitmap.MakeTransparent(System.Drawing.Color.FromArgb(texture.Color2C.R, texture.Color2C.G, texture.Color2C.B));
-                                            material2.semitransparent = true;
-                                        }
-                                        bitmap.RotateFlip(RotateFlipType.Rotate180FlipX);
-                                        image = bitmap;
-                                        stream = new MemoryStream();
-                                        try
-                                        {
-                                            image.Save(stream, ImageFormat.Png);
-                                            material2.texture = Texture2D.FromStream(gd, stream);
-                                        }
-                                        finally
-                                        {
-                                            if (stream is object)
-                                            {
-                                                stream.Dispose();
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        Utils.WriteLine("Loading LR BMP: " + path, ConsoleColor.DarkMagenta);
-                                        bitmap = new Bitmap(bmp.Width, bmp.Height);
-                                        int num = 0;
-                                        while (true)
-                                        {
-                                            if (num >= bitmap.Width)
-                                            {
-                                                if (texture.HasColor2C)
-                                                {
-                                                    bitmap.MakeTransparent(System.Drawing.Color.FromArgb(texture.Color2C.R, texture.Color2C.G, texture.Color2C.B));
-                                                    material2.semitransparent = true;
-                                                }
-                                                image = bitmap;
-                                                stream = new MemoryStream();
-                                                try
-                                                {
-                                                    image.Save(stream, ImageFormat.Png);
-                                                    material2.texture = Texture2D.FromStream(gd, stream);
-                                                }
-                                                finally
-                                                {
-                                                    if (stream is object)
-                                                    {
-                                                        stream.Dispose();
-                                                    }
-                                                }
-                                                break;
-                                            }
-                                            int num2 = 0;
-                                            while (true)
-                                            {
-                                                flag2 = num2 < bitmap.Height;
-                                                if (!flag2)
-                                                {
-                                                    num++;
-                                                    break;
-                                                }
-                                                BitmapColor pixel = bmp.GetPixel(num, num2);
-                                                bitmap.SetPixel(num, (bmp.Height - num2) - 1, System.Drawing.Color.FromArgb(pixel.r, pixel.g, pixel.b));
-                                                num2++;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        material2.hasTransparentColor = true;
+                        material2.transparentColor = System.Drawing.Color.FromArgb(texture.Color2C.R, texture.Color2C.G, texture.Color2C.B);
+                    }
+                    if (!texture.IsBitmap)
+                    {
+                        Utils.WriteLine("Not loading TGA: " + Path.Combine(directoryName, material.TextureName + ".TGA"), ConsoleColor.Red);
                     }
                     else
                     {
-                        return dictionary;
+                        material2.texture = LoadTextureFromPath(Path.Combine(directoryName, material.TextureName + ".BMP"), gd, material2, true);
                     }
-                    break;
                 }
-                goto TR_0005;
+                dictionary.Add(current.Key, material2);
             }
+            return dictionary;
+        }
+
+        private static Texture2D LoadTextureFromPath(string path, GraphicsDevice gd, Material material, bool logLoad)
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            Bitmap bitmap;
+            Image image;
+            MemoryStream stream;
+            BMP bmp = null;
+            bool isLegoBitmap = true;
+            try
+            {
+                bmp = new BMP(path);
+            }
+            catch (InvalidDataException)
+            {
+                isLegoBitmap = false;
+            }
+
+            if (!isLegoBitmap)
+            {
+                if (logLoad)
+                {
+                    Utils.WriteLine("Loading Win BMP: " + path, ConsoleColor.DarkMagenta);
+                }
+                bitmap = new Bitmap(path);
+                if (material.hasTransparentColor)
+                {
+                    bitmap.MakeTransparent(material.transparentColor);
+                    material.semitransparent = true;
+                }
+                bitmap.RotateFlip(RotateFlipType.Rotate180FlipX);
+                image = bitmap;
+                stream = new MemoryStream();
+                try
+                {
+                    image.Save(stream, ImageFormat.Png);
+                    return Texture2D.FromStream(gd, stream);
+                }
+                finally
+                {
+                    stream?.Dispose();
+                    image.Dispose();
+                }
+            }
+
+            if (logLoad)
+            {
+                Utils.WriteLine("Loading LR BMP: " + path, ConsoleColor.DarkMagenta);
+            }
+            bitmap = new Bitmap(bmp.Width, bmp.Height);
+            for (int x = 0; x < bitmap.Width; x++)
+            {
+                for (int y = 0; y < bitmap.Height; y++)
+                {
+                    BitmapColor pixel = bmp.GetPixel(x, y);
+                    bitmap.SetPixel(x, (bmp.Height - y) - 1, System.Drawing.Color.FromArgb(pixel.r, pixel.g, pixel.b));
+                }
+            }
+
+            if (material.hasTransparentColor)
+            {
+                bitmap.MakeTransparent(material.transparentColor);
+                material.semitransparent = true;
+            }
+
+            image = bitmap;
+            stream = new MemoryStream();
+            try
+            {
+                image.Save(stream, ImageFormat.Png);
+                return Texture2D.FromStream(gd, stream);
+            }
+            finally
+            {
+                stream?.Dispose();
+                image.Dispose();
+            }
+        }
+
+        private static IEnumerable<string> GetTextureFrameNameCandidates(string textureName, int frameIndex)
+        {
+            HashSet<string> candidates = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+            if (string.IsNullOrWhiteSpace(textureName))
+            {
+                yield break;
+            }
+
+            string trimmed = textureName.Trim();
+            if (frameIndex <= 0)
+            {
+                yield return trimmed;
+                yield break;
+            }
+
+            Match trailingDigits = Regex.Match(trimmed, @"^(.*?)(\d+)$");
+            if (trailingDigits.Success)
+            {
+                string prefix = trailingDigits.Groups[1].Value;
+                int width = trailingDigits.Groups[2].Value.Length;
+                string replaced = prefix + frameIndex.ToString(new string('0', width), CultureInfo.InvariantCulture);
+                if (candidates.Add(replaced))
+                {
+                    yield return replaced;
+                }
+            }
+
+            string appended = trimmed + frameIndex.ToString(CultureInfo.InvariantCulture);
+            if (candidates.Add(appended))
+            {
+                yield return appended;
+            }
+
+            for (int width = 2; width <= 4; width++)
+            {
+                string padded = trimmed + frameIndex.ToString(new string('0', width), CultureInfo.InvariantCulture);
+                if (candidates.Add(padded))
+                {
+                    yield return padded;
+                }
+            }
+        }
+
+        public static Material ResolveAnimatedMaterialFrame(Material source, GraphicsDevice gd, int frameIndex)
+        {
+            if (source == null || source.texture == null || frameIndex <= 0)
+            {
+                return source;
+            }
+
+            if (source.animationFrameTextures.TryGetValue(frameIndex, out Texture2D cachedTexture))
+            {
+                return cachedTexture == null ? source : source.CloneWithTexture(cachedTexture);
+            }
+
+            foreach (string candidate in GetTextureFrameNameCandidates(source.textureName, frameIndex))
+            {
+                string path = Path.Combine(source.textureDirectory, candidate + ".BMP");
+                Texture2D texture = LoadTextureFromPath(path, gd, source, false);
+                if (texture != null)
+                {
+                    source.animationFrameTextures[frameIndex] = texture;
+                    return source.CloneWithTexture(texture);
+                }
+            }
+
+            source.animationFrameTextures[frameIndex] = null;
+            return source;
         }
 
         public static LR1TrackEditor.Model loadmodel(GameView game, string modelpath, bool rotatingboundingbox = false)
@@ -212,6 +275,16 @@
                 model.normals = gdb.VertexColors.Length == 0;
                 model.scale = gdb.Scale;
                 List<Block> list = getBlocks(gdb.Meta);
+                if (list.Count == 0)
+                {
+                    Utils.WriteLine("Skipping empty GDB: " + modelpath, ConsoleColor.Yellow);
+                    model.indices = Array.Empty<ushort>();
+                    model.verticesC = Array.Empty<VertexPTC>();
+                    model.verticesN = Array.Empty<VertexPTN>();
+                    model.numvertices = 0;
+                    model.boundingbox = new BoundingBox(Vector3.Zero, Vector3.Zero);
+                    return model;
+                }
                 List<ushort> list2 = new List<ushort>();
                 List<GDB_Vertex_Color> input = new List<GDB_Vertex_Color>();
                 List<GDB_Vertex_Normal> list4 = new List<GDB_Vertex_Normal>();
@@ -333,7 +406,10 @@
             model.parts = (from part in model.parts
                            orderby ((part.material != null) && game.materials.ContainsKey(part.material)) && game.materials[part.material].semitransparent
                            select part).ToList<ModelPart>();
-            model.CreateBuffers(game.GraphicsDevice);
+            if (model.numvertices > 0 && model.indices.Length > 0)
+            {
+                model.CreateBuffers(game.GraphicsDevice);
+            }
             model.generateBoundingBox(rotatingboundingbox);
             return model;
         }
@@ -372,6 +448,12 @@
             model.CreateBuffers(game.GraphicsDevice);
             model.generateBoundingBox(false);
             return model;
+        }
+
+        private static Matrix CreateWorldMatrix(LRVector3 position, LRVector3 rotationFwd, LRVector3 rotationUp)
+        {
+            Vector3 right = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
+            return new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, right.X, right.Y, right.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
         }
 
         public static PWB loadPWB(GameView game, string pwbpath)
@@ -645,21 +727,85 @@
             if (wdbPath != null && loadedPaths.Add(wdbPath))
             {
                 WDB collisionScene = new WDB(wdbPath);
-                foreach (string gdbName in collisionScene.GDBs ?? Array.Empty<string>())
+                Dictionary<int, LR1TrackEditor.Model> gdbModels = new Dictionary<int, LR1TrackEditor.Model>();
+                for (int i = 0; i < (collisionScene.GDBs ?? Array.Empty<string>()).Length; i++)
                 {
+                    string gdbName = collisionScene.GDBs[i];
                     string gdbPath = ResolveRABPath(directory, gdbName, ".GDB");
                     if (gdbPath != null && loadedPaths.Add(gdbPath))
                     {
-                        game.collisionModels.Add(loadmodel(game, gdbPath, false));
+                        gdbModels[i] = loadmodel(game, gdbPath, false);
                     }
                 }
 
-                foreach (string bvbName in collisionScene.BVBs ?? Array.Empty<string>())
+                HashSet<int> referencedGdbIndices = new HashSet<int>();
+                foreach (KeyValuePair<string, WDB_StaticModel> current in collisionScene.StaticModels)
                 {
+                    if (current.Value?.ModelRef == null || !gdbModels.ContainsKey(current.Value.ModelRef.IndexGDB))
+                    {
+                        continue;
+                    }
+
+                    referencedGdbIndices.Add(current.Value.ModelRef.IndexGDB);
+                    game.collisionModels.Add(new CollisionModelInstance
+                    {
+                        Model = gdbModels[current.Value.ModelRef.IndexGDB],
+                        Transform = CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
+                        SourcePath = wdbPath
+                    });
+                }
+
+                for (int i = 0; i < (collisionScene.GDBs ?? Array.Empty<string>()).Length; i++)
+                {
+                    if (gdbModels.ContainsKey(i) && !referencedGdbIndices.Contains(i))
+                    {
+                        game.collisionModels.Add(new CollisionModelInstance
+                        {
+                            Model = gdbModels[i],
+                            Transform = Matrix.Identity,
+                            SourcePath = wdbPath
+                        });
+                    }
+                }
+
+                Dictionary<int, LR1TrackEditor.Model> bvbModels = new Dictionary<int, LR1TrackEditor.Model>();
+                for (int i = 0; i < (collisionScene.BVBs ?? Array.Empty<string>()).Length; i++)
+                {
+                    string bvbName = collisionScene.BVBs[i];
                     string bvbPath = ResolveRABPath(directory, bvbName, ".BVB");
                     if (bvbPath != null && loadedPaths.Add(bvbPath))
                     {
-                        game.collisionModels.Add(loadCollisionBVB(game, bvbPath));
+                        bvbModels[i] = loadCollisionBVB(game, bvbPath);
+                    }
+                }
+
+                HashSet<int> referencedBvbIndices = new HashSet<int>();
+                foreach (KeyValuePair<string, WDB_BVBModel> current in collisionScene.BVBModels)
+                {
+                    if (current.Value == null || !bvbModels.ContainsKey(current.Value.ModelRef))
+                    {
+                        continue;
+                    }
+
+                    referencedBvbIndices.Add(current.Value.ModelRef);
+                    game.collisionModels.Add(new CollisionModelInstance
+                    {
+                        Model = bvbModels[current.Value.ModelRef],
+                        Transform = CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
+                        SourcePath = wdbPath
+                    });
+                }
+
+                for (int i = 0; i < (collisionScene.BVBs ?? Array.Empty<string>()).Length; i++)
+                {
+                    if (bvbModels.ContainsKey(i) && !referencedBvbIndices.Contains(i))
+                    {
+                        game.collisionModels.Add(new CollisionModelInstance
+                        {
+                            Model = bvbModels[i],
+                            Transform = Matrix.Identity,
+                            SourcePath = wdbPath
+                        });
                     }
                 }
                 return;
@@ -668,14 +814,24 @@
             string bvbDirectPath = ResolveRABPath(directory, collisionRef, ".BVB");
             if (bvbDirectPath != null && loadedPaths.Add(bvbDirectPath))
             {
-                game.collisionModels.Add(loadCollisionBVB(game, bvbDirectPath));
+                game.collisionModels.Add(new CollisionModelInstance
+                {
+                    Model = loadCollisionBVB(game, bvbDirectPath),
+                    Transform = Matrix.Identity,
+                    SourcePath = bvbDirectPath
+                });
                 return;
             }
 
             string gdbDirectPath = ResolveRABPath(directory, collisionRef, ".GDB");
             if (gdbDirectPath != null && loadedPaths.Add(gdbDirectPath))
             {
-                game.collisionModels.Add(loadmodel(game, gdbDirectPath, false));
+                game.collisionModels.Add(new CollisionModelInstance
+                {
+                    Model = loadmodel(game, gdbDirectPath, false),
+                    Transform = Matrix.Identity,
+                    SourcePath = gdbDirectPath
+                });
             }
         }
 
@@ -700,6 +856,166 @@
                         }
                     }
                 }
+            }
+        }
+
+        private static void DisposeSceneModels(GameView game)
+        {
+            foreach (LR1TrackEditor.Model model in game.models.Values)
+            {
+                model?.vertexbuffer?.Dispose();
+                model?.indexbuffer?.Dispose();
+            }
+        }
+
+        private static void MergeMaterials(GameView game, string mdbPath)
+        {
+            foreach (KeyValuePair<string, Material> kvp in loadmaterials(mdbPath, game.GraphicsDevice))
+            {
+                game.materials[kvp.Key] = kvp.Value;
+            }
+            game.currentmatfile = mdbPath;
+        }
+
+        private static void LoadSceneMaterials(GameView game, string wdbPath, bool clearExisting)
+        {
+            string directory = Path.GetDirectoryName(wdbPath);
+            string stem = Path.GetFileNameWithoutExtension(wdbPath);
+            string sceneMaterialPath = Path.Combine(directory, stem + ".MDB");
+            string sceneTextureDbPath = Path.Combine(directory, stem + ".TDB");
+            string combinedMaterialPath = Path.Combine(directory, "COMBINED.MDB");
+            string combinedTextureDbPath = Path.Combine(directory, "COMBINED.TDB");
+
+            if (clearExisting)
+            {
+                game.materials.Clear();
+            }
+
+            if (File.Exists(sceneMaterialPath) && File.Exists(sceneTextureDbPath))
+            {
+                MergeMaterials(game, sceneMaterialPath);
+                return;
+            }
+
+            if (File.Exists(combinedMaterialPath) && File.Exists(combinedTextureDbPath))
+            {
+                if (!string.Equals(game.currentmatfile, combinedMaterialPath, StringComparison.InvariantCultureIgnoreCase) || clearExisting)
+                {
+                    MergeMaterials(game, combinedMaterialPath);
+                }
+            }
+        }
+
+        private static List<LoadedMabDefinition> LoadSceneMabs(string wdbPath, WDB scene)
+        {
+            List<LoadedMabDefinition> loadedMabs = new List<LoadedMabDefinition>();
+            if (scene?.MABs == null || scene.MABs.Length == 0)
+            {
+                return loadedMabs;
+            }
+
+            string directory = Path.GetDirectoryName(wdbPath);
+            foreach (string mabRef in scene.MABs)
+            {
+                string mabPath = ResolveRABPath(directory, mabRef, ".MAB", ".MAF");
+                if (mabPath == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    Utils.WriteLine("Loading MAB: " + mabPath, ConsoleColor.DarkGreen);
+                    MAB mab = new MAB(mabPath);
+                    LoadedMabDefinition loaded = new LoadedMabDefinition
+                    {
+                        SourcePath = mabPath,
+                        DisplayName = Path.GetFileNameWithoutExtension(mabPath)
+                    };
+
+                    MAB_MaterialFrame[] materialFrames = mab.MaterialFrames ?? Array.Empty<MAB_MaterialFrame>();
+                    MAB_Animation[] animations = mab.Animations ?? Array.Empty<MAB_Animation>();
+                    for (int animationIndex = 0; animationIndex < animations.Length; animationIndex++)
+                    {
+                        MAB_Animation sourceAnimation = animations[animationIndex];
+                        MabAnimationDefinition animation = new MabAnimationDefinition
+                        {
+                            Id = loaded.DisplayName + "@Animation" + animationIndex.ToString(CultureInfo.InvariantCulture),
+                            DisplayName = loaded.DisplayName + " Animation " + animationIndex.ToString(CultureInfo.InvariantCulture),
+                            SourceName = loaded.DisplayName,
+                            SourceIndex = animationIndex,
+                            Speed = sourceAnimation?.Speed ?? 0,
+                            LogicalFrameCount = Math.Max(sourceAnimation?.Frames ?? 0, 1)
+                        };
+
+                        if (sourceAnimation != null)
+                        {
+                            for (int sequenceIndex = 0; sequenceIndex < sourceAnimation.AnimationLength; sequenceIndex++)
+                            {
+                                int sourceFrameIndex = sourceAnimation.AnimationOffset + sequenceIndex;
+                                if (sourceFrameIndex < 0 || sourceFrameIndex >= materialFrames.Length)
+                                {
+                                    continue;
+                                }
+
+                                MAB_MaterialFrame sourceFrame = materialFrames[sourceFrameIndex];
+                                if (sourceFrame == null)
+                                {
+                                    continue;
+                                }
+
+                                MabFrameDefinition frame = new MabFrameDefinition
+                                {
+                                    MaterialName = sourceFrame.Material ?? string.Empty,
+                                    FrameIndex = sourceFrame.Frame
+                                };
+                                animation.SequenceFrames.Add(frame);
+                                if (!string.IsNullOrWhiteSpace(frame.MaterialName))
+                                {
+                                    animation.ReferencedMaterials.Add(frame.MaterialName);
+                                }
+                            }
+                        }
+
+                        loaded.Animations.Add(animation);
+                    }
+
+                    loadedMabs.Add(loaded);
+                }
+                catch (Exception ex)
+                {
+                    Utils.WriteLine("Failed to load MAB: " + ex.Message, ConsoleColor.Red);
+                }
+            }
+
+            return loadedMabs;
+        }
+
+        private static IEnumerable<string> GetAdditionalSceneReferences(RAB_Track track)
+        {
+            if (!string.IsNullOrWhiteSpace(track.Unknown27))
+            {
+                yield return track.Unknown27;
+            }
+
+            if (!string.IsNullOrWhiteSpace(track.Unknown34))
+            {
+                yield return track.Unknown34;
+            }
+
+            if (!string.IsNullOrWhiteSpace(track.Unknown3B))
+            {
+                yield return track.Unknown3B;
+            }
+
+            if (!string.IsNullOrWhiteSpace(track.Unknown40))
+            {
+                yield return track.Unknown40;
+            }
+
+            if (!string.IsNullOrWhiteSpace(track.Unknown45))
+            {
+                yield return track.Unknown45;
             }
         }
 
@@ -729,44 +1045,41 @@
                 string wdbPath = ResolveRABPath(dir, track.MaybeTrackScene, ".WDB", ".WDF");
                 if (wdbPath != null)
                 {
-                    // Load materials first (same name as WDB)
-                    string mdbName = Path.GetFileNameWithoutExtension(wdbPath) + ".MDB";
-                    string mdbPath = Path.Combine(dir, mdbName);
-                    string tdbPath = Path.Combine(dir, Path.GetFileNameWithoutExtension(wdbPath) + ".TDB");
-                    if (File.Exists(mdbPath) && File.Exists(tdbPath))
-                    {
-                        game.materials.Clear();
-                        foreach (var kvp in loadmaterials(mdbPath, game.GraphicsDevice))
-                        {
-                            game.materials[kvp.Key] = kvp.Value;
-                        }
-                        game.currentmatfile = mdbPath;
-                    }
-                    else
-                    {
-                        // Try COMBINED.MDB
-                        mdbPath = Path.Combine(dir, "COMBINED.MDB");
-                        tdbPath = Path.Combine(dir, "COMBINED.TDB");
-                        if (File.Exists(mdbPath) && File.Exists(tdbPath))
-                        {
-                            game.materials.Clear();
-                            foreach (var kvp in loadmaterials(mdbPath, game.GraphicsDevice))
-                            {
-                                game.materials[kvp.Key] = kvp.Value;
-                            }
-                            game.currentmatfile = mdbPath;
-                        }
-                    }
-
                     try
                     {
-                        game.wdb = loadWDB(game, wdbPath);
+                        LoadSceneMaterials(game, wdbPath, true);
+                        game.wdb = loadWDB(game, wdbPath, true);
                         game.currentWDBfile = wdbPath;
                     }
                     catch (Exception ex)
                     {
                         Utils.WriteLine("Failed to load WDB: " + ex.Message, ConsoleColor.Red);
                     }
+                }
+            }
+
+            HashSet<string> loadedScenePaths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(game.currentWDBfile))
+            {
+                loadedScenePaths.Add(game.currentWDBfile);
+            }
+
+            foreach (string sceneReference in GetAdditionalSceneReferences(track))
+            {
+                string extraWdbPath = ResolveRABPath(dir, sceneReference, ".WDB", ".WDF");
+                if (extraWdbPath == null || !loadedScenePaths.Add(extraWdbPath))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    LoadSceneMaterials(game, extraWdbPath, false);
+                    game.extraWdbScenes.Add(loadWDB(game, extraWdbPath, false));
+                }
+                catch (Exception ex)
+                {
+                    Utils.WriteLine("Failed to load extra WDB scene: " + ex.Message, ConsoleColor.Red);
                 }
             }
 
@@ -785,6 +1098,11 @@
                         Utils.WriteLine("Failed to load collision geometry: " + ex.Message, ConsoleColor.Red);
                     }
                 }
+                Utils.WriteLine("Loaded collision meshes: " + game.collisionModels.Count.ToString(CultureInfo.InvariantCulture), ConsoleColor.DarkYellow);
+            }
+            else if (!loadTrackCollisionGeometry && track.MaybeCollisionMeshes != null && track.MaybeCollisionMeshes.Length > 0)
+            {
+                Utils.WriteLine("Skipping collision geometry load because it is disabled in Options.", ConsoleColor.Yellow);
             }
 
             // Load skybox
@@ -940,17 +1258,24 @@
             game.form.refreshRRB();
         }
 
-        public static WDB loadWDB(GameView game, string wdbpath)
+        public static WDB loadWDB(GameView game, string wdbpath, bool clearExistingModels = true)
         {
             WDB wdb = new WDB(wdbpath);
             Utils.WriteLine("Loading WDB: " + wdbpath, ConsoleColor.Magenta);
-            game.models.Clear();
+            if (clearExistingModels)
+            {
+                DisposeSceneModels(game);
+                game.models.Clear();
+            }
             string directoryName = Path.GetDirectoryName(wdbpath);
             Utils.WriteLine("WDB GDBs[" + wdb.GDBs.Length + "]: " + string.Join(", ", wdb.GDBs), ConsoleColor.Magenta);
             Utils.WriteLine("WDB GDB2s[" + wdb.GDB2s.Length + "]: " + string.Join(", ", wdb.GDB2s), ConsoleColor.Magenta);
             foreach (string str2 in wdb.GDBs)
             {
-                game.models[str2] = loadmodel(game, Path.Combine(directoryName, str2 + ".gdb"), false);
+                if (!game.models.ContainsKey(str2))
+                {
+                    game.models[str2] = loadmodel(game, Path.Combine(directoryName, str2 + ".gdb"), false);
+                }
             }
             foreach (string str2 in wdb.GDB2s)
             {
@@ -965,6 +1290,15 @@
                     ? wdb.GDBs[kvp.Value.ModelRef.IndexGDB] : "null";
                 Utils.WriteLine("  Static: " + kvp.Key + " -> GDB index " + (kvp.Value.ModelRef?.IndexGDB.ToString() ?? "null") + " = " + refGdb, ConsoleColor.DarkMagenta);
             }
+            foreach (var kvp in wdb.BDBModels)
+            {
+                string refGdb = (kvp.Value.ModelRef != null && kvp.Value.ModelRef.IndexGDB >= 0 && kvp.Value.ModelRef.IndexGDB < wdb.GDBs.Length)
+                    ? wdb.GDBs[kvp.Value.ModelRef.IndexGDB] : "null";
+                string refBdb = (kvp.Value.ModelRef != null && kvp.Value.ModelRef.IndexBDB >= 0 && kvp.Value.ModelRef.IndexBDB < wdb.BDBs.Length)
+                    ? wdb.BDBs[kvp.Value.ModelRef.IndexBDB] : "null";
+                Utils.WriteLine("  BDB: " + kvp.Key + " -> GDB index " + (kvp.Value.ModelRef?.IndexGDB.ToString() ?? "null") + " = " + refGdb + ", BDB = " + refBdb, ConsoleColor.DarkMagenta);
+            }
+            game.RegisterSceneResources(wdb, wdbpath, LoadSceneMabs(wdbpath, wdb), clearExistingModels);
             return wdb;
         }
 

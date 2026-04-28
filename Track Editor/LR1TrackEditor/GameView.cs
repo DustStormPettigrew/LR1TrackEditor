@@ -13,6 +13,14 @@
     using System.Runtime.InteropServices;
     using System.Windows.Forms;
 
+    public enum ViewerSelectionType
+    {
+        None,
+        PowerupBrick,
+        StartPosition,
+        Checkpoint
+    }
+
     public class GameView : Game
     {
         private readonly GraphicsDeviceManager graphics;
@@ -62,7 +70,12 @@
         public CPB cpb = null;
         public HZB hzb = null;
         public List<EMB> embs = new List<EMB>();
-        public List<LR1TrackEditor.Model> collisionModels = new List<LR1TrackEditor.Model>();
+        public List<CollisionModelInstance> collisionModels = new List<CollisionModelInstance>();
+        public List<WDB> extraWdbScenes = new List<WDB>();
+        public Dictionary<WDB, string> scenePaths = new Dictionary<WDB, string>();
+        public Dictionary<WDB, List<LoadedMabDefinition>> sceneMabs = new Dictionary<WDB, List<LoadedMabDefinition>>();
+        public List<AnimatedObjectEntry> animatedObjects = new List<AnimatedObjectEntry>();
+        public Dictionary<string, AnimatedObjectPlayback> animatedObjectPlaybacks = new Dictionary<string, AnimatedObjectPlayback>(StringComparer.InvariantCultureIgnoreCase);
         public List<RRBFile> rrbs = new List<RRBFile>();
         public int editingRRBindex = -1;
         public string gamedir = "";
@@ -81,6 +94,9 @@
         public LR1TrackEditor.Model placingmodel;
         public Vector3? placingposition;
         public BoundingBox[] dragarrowhitboxes;
+        public ViewerSelectionType selectedViewerObject = ViewerSelectionType.None;
+        public int selectedStartPositionKey = -1;
+        public int selectedCheckpointIndex = -1;
 
         public GameView()
         {
@@ -112,6 +128,7 @@
             this.placingmodel = null;
             this.placingposition = null;
             this.dragarrowhitboxes = new BoundingBox[3];
+            this.ClearViewerSelection();
             if (LR1TrackEditor.Settings.Default.NeedsUpdate)
             {
                 LR1TrackEditor.Settings.Default.Upgrade();
@@ -131,7 +148,6 @@
 
         protected override void Draw(GameTime gameTime)
         {
-            Matrix matrix;
             LRVector3 position;
             this.basicEffect.World = Matrix.Identity;
             base.GraphicsDevice.DepthStencilState = DepthStencilState.Default;
@@ -197,13 +213,13 @@
                                         if (this.SelectedBricksColored[index])
                                         {
                                             PWB_ColorBrick brick = this.pwb.ColorBricks[this.SelectedBrickIndices[index]];
-                                            matrix = Matrix.CreateTranslation(brick.Position.X, brick.Position.Y, brick.Position.Z);
+                                            Matrix matrix = Matrix.CreateTranslation(brick.Position.X, brick.Position.Y, brick.Position.Z);
                                             this.pupbrick.DrawBoundingBox(this, this.basicEffect, matrix);
                                         }
                                         else
                                         {
                                             PWB_WhiteBrick brick2 = this.pwb.WhiteBricks[this.SelectedBrickIndices[index]];
-                                            matrix = Matrix.CreateTranslation(brick2.Position.X, brick2.Position.Y, brick2.Position.Z);
+                                            Matrix matrix = Matrix.CreateTranslation(brick2.Position.X, brick2.Position.Y, brick2.Position.Z);
                                             this.enhabrick.DrawBoundingBox(this, this.basicEffect, matrix);
                                         }
                                         if (index == (this.SelectedBrickIndices.Count - 1))
@@ -258,89 +274,35 @@
             }
             if (!(this.wdb is null))
             {
-                flag = !this.doDrawStaticObj;
-                if (!flag)
+                this.DrawScene(this.wdb);
+                foreach (WDB extraScene in this.extraWdbScenes)
                 {
-                    // Track which GDB indices are referenced by static models
-                    HashSet<int> referencedGDBIndices = new HashSet<int>();
-                    using (Dictionary<string, WDB_StaticModel>.Enumerator enumerator3 = this.wdb.StaticModels.GetEnumerator())
-                    {
-                        while (true)
-                        {
-                            flag = enumerator3.MoveNext();
-                            if (!flag)
-                            {
-                                break;
-                            }
-                            KeyValuePair<string, WDB_StaticModel> current = enumerator3.Current;
-                            string gdbName = null;
-                            if (current.Value.ModelRef != null && current.Value.ModelRef.IndexGDB >= 0 && current.Value.ModelRef.IndexGDB < this.wdb.GDBs.Length)
-                            {
-                                gdbName = this.wdb.GDBs[current.Value.ModelRef.IndexGDB];
-                                referencedGDBIndices.Add(current.Value.ModelRef.IndexGDB);
-                            }
-                            if (gdbName != null && this.models.ContainsKey(gdbName))
-                            {
-                                position = current.Value.Position;
-                                LRVector3 rotationFwd = current.Value.RotationFwd;
-                                LRVector3 rotationUp = current.Value.RotationUp;
-                                Vector3 vector4 = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
-                                matrix = new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, vector4.X, vector4.Y, vector4.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
-                                this.models[gdbName].Draw(this, this.basicEffect, matrix, null);
-                            }
-                        }
-                    }
-                    // Draw GDBs not referenced by any static model at origin (e.g. track mesh)
-                    for (int i = 0; i < this.wdb.GDBs.Length; i++)
-                    {
-                        if (!referencedGDBIndices.Contains(i) && this.models.ContainsKey(this.wdb.GDBs[i]))
-                        {
-                            this.models[this.wdb.GDBs[i]].Draw(this, this.basicEffect);
-                        }
-                    }
-                }
-                flag = !this.doDrawAnimObj;
-                if (!flag)
-                {
-                    using (Dictionary<string, WDB_AnimatedModel>.Enumerator enumerator4 = this.wdb.AnimatedModels.GetEnumerator())
-                    {
-                        while (true)
-                        {
-                            flag = enumerator4.MoveNext();
-                            if (!flag)
-                            {
-                                break;
-                            }
-                            KeyValuePair<string, WDB_AnimatedModel> current = enumerator4.Current;
-                            if (current.Value.ModelRef != null && current.Value.ModelRef.IndexGDB.HasValue && this.wdb.GDB2s.Length > current.Value.ModelRef.IndexGDB.Value)
-                            {
-                                string gdbName = this.wdb.GDB2s[current.Value.ModelRef.IndexGDB.Value];
-                                if (this.models.ContainsKey(gdbName))
-                                {
-                                    position = current.Value.Position;
-                                    LRVector3 rotationFwd = current.Value.RotationFwd;
-                                    LRVector3 rotationUp = current.Value.RotationUp;
-                                    Vector3 vector4 = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
-                                    matrix = new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, vector4.X, vector4.Y, vector4.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
-                                    this.models[gdbName].Draw(this, this.basicEffect, matrix, null);
-                                }
-                            }
-                        }
-                    }
+                    this.DrawScene(extraScene);
                 }
             }
             if (this.collisionModels.Count > 0 && this.doDrawCollision)
             {
+                RasterizerState previousRasterizerState = base.GraphicsDevice.RasterizerState;
+                DepthStencilState previousDepthStencilState = base.GraphicsDevice.DepthStencilState;
                 Material collisionMaterial = new Material
                 {
                     ambientcolor = new Microsoft.Xna.Framework.Color(255, 160, 64),
                     diffusecolor = new Microsoft.Xna.Framework.Color(255, 160, 64),
-                    alpha = 180
+                    alpha = 255
                 };
-                foreach (LR1TrackEditor.Model collisionModel in this.collisionModels)
+                RasterizerState collisionRasterizerState = new RasterizerState
                 {
-                    collisionModel.Draw(this, this.basicEffect, Matrix.Identity, collisionMaterial);
+                    CullMode = CullMode.None,
+                    FillMode = FillMode.WireFrame
+                };
+                base.GraphicsDevice.RasterizerState = collisionRasterizerState;
+                base.GraphicsDevice.DepthStencilState = DepthStencilState.None;
+                foreach (CollisionModelInstance collisionModel in this.collisionModels)
+                {
+                    collisionModel.Model?.Draw(this, this.basicEffect, collisionModel.Transform, collisionMaterial);
                 }
+                base.GraphicsDevice.DepthStencilState = previousDepthStencilState;
+                base.GraphicsDevice.RasterizerState = previousRasterizerState;
             }
             // Draw SPB start positions
             if (this.spb != null && this.doDrawSPB && this.spb.StartPositions != null)
@@ -475,6 +437,18 @@
                 DrawPositionMarkers(positions, new Microsoft.Xna.Framework.Color(0, 200, 255), 4f);
             }
 
+            Vector3? selectedViewerPosition = this.GetSelectedViewerPosition();
+            if (selectedViewerPosition != null)
+            {
+                Microsoft.Xna.Framework.Color selectionColor = this.selectedViewerObject == ViewerSelectionType.StartPosition
+                    ? new Microsoft.Xna.Framework.Color(0, 255, 0)
+                    : new Microsoft.Xna.Framework.Color(255, 255, 0);
+                this.DrawPositionMarkers(new List<Vector3> { selectedViewerPosition.Value }, selectionColor, 12f);
+                base.GraphicsDevice.DepthStencilState = DepthStencilState.None;
+                this.DrawMoveArrows(selectedViewerPosition.Value);
+                base.GraphicsDevice.DepthStencilState = DepthStencilState.Default;
+            }
+
             base.Draw(gameTime);
         }
 
@@ -569,10 +543,8 @@
             this.height = base.GraphicsDevice.Viewport.Height;
             this.width = base.GraphicsDevice.Viewport.Width;
             this.rasterizerstate = RasterizerState.CullClockwise;
-            this.basicEffect = new BasicEffect(base.GraphicsDevice)
-            {
-                Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(LR1TrackEditor.Settings.Default.FoV), ((float)this.width) / ((float)this.height), 1f, LR1TrackEditor.Settings.Default.RenderDistance)
-            };
+            this.basicEffect = new BasicEffect(base.GraphicsDevice);
+            this.RefreshProjectionSettings();
             this.cameraPosition = new Vector3(200f, -200f, 20f);
             this.backgrnd = new BasicEffect(base.GraphicsDevice)
             {
@@ -716,6 +688,7 @@
                 {
                     PWB_ColorBrick item = new PWB_ColorBrick(position, 0x2a);
                     this.pwb.ColorBricks.Add(item);
+                    this.form.MarkPwbEdited();
                 }
                 if (!keepplacing)
                 {
@@ -776,12 +749,459 @@
             model?.indexbuffer?.Dispose();
         }
 
+        public void RefreshProjectionSettings()
+        {
+            if (this.basicEffect == null || this.height <= 0 || this.width <= 0)
+            {
+                return;
+            }
+
+            float nearPlane = 1f;
+            float farPlane = Math.Max(LR1TrackEditor.Settings.Default.RenderDistance, nearPlane + 0.01f);
+            float aspectRatio = ((float)this.width) / ((float)this.height);
+            this.basicEffect.Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(LR1TrackEditor.Settings.Default.FoV), aspectRatio, nearPlane, farPlane);
+        }
+
+        public void RegisterSceneResources(WDB scene, string scenePath, List<LoadedMabDefinition> loadedMabs, bool clearExisting)
+        {
+            if (clearExisting)
+            {
+                this.scenePaths.Clear();
+                this.sceneMabs.Clear();
+                this.animatedObjects.Clear();
+                this.animatedObjectPlaybacks.Clear();
+            }
+
+            if (scene == null)
+            {
+                return;
+            }
+
+            this.scenePaths[scene] = scenePath ?? string.Empty;
+            this.sceneMabs[scene] = loadedMabs ?? new List<LoadedMabDefinition>();
+        }
+
+        public void ClearViewerSelection()
+        {
+            this.selectedViewerObject = ViewerSelectionType.None;
+            this.selectedStartPositionKey = -1;
+            this.selectedCheckpointIndex = -1;
+        }
+
+        public bool HasDraggableSelection()
+        {
+            return ((this.editmode == 1) && (this.SelectedBrickIndices.Count > 0)) ||
+                   (this.selectedViewerObject != ViewerSelectionType.None);
+        }
+
+        public Vector3? GetSelectedViewerPosition()
+        {
+            if (this.selectedViewerObject == ViewerSelectionType.StartPosition &&
+                this.spb?.StartPositions != null &&
+                this.spb.StartPositions.ContainsKey(this.selectedStartPositionKey))
+            {
+                LRVector3 position = this.spb.StartPositions[this.selectedStartPositionKey].Position;
+                return new Vector3(position.X, position.Y, position.Z);
+            }
+
+            if (this.selectedViewerObject == ViewerSelectionType.Checkpoint &&
+                this.cpb?.Checkpoints != null &&
+                this.selectedCheckpointIndex >= 0 &&
+                this.selectedCheckpointIndex < this.cpb.Checkpoints.Length)
+            {
+                LRVector3 position = this.cpb.Checkpoints[this.selectedCheckpointIndex].Location;
+                return new Vector3(position.X, position.Y, position.Z);
+            }
+
+            return null;
+        }
+
+        public void ApplyViewerDragDelta(int axis, float delta)
+        {
+            if (this.selectedViewerObject == ViewerSelectionType.StartPosition &&
+                this.spb?.StartPositions != null &&
+                this.spb.StartPositions.ContainsKey(this.selectedStartPositionKey))
+            {
+                LRVector3 position = this.spb.StartPositions[this.selectedStartPositionKey].Position;
+                if (axis == 1)
+                {
+                    position.X += delta;
+                }
+                else if (axis == 2)
+                {
+                    position.Y += delta;
+                }
+                else if (axis == 3)
+                {
+                    position.Z += delta;
+                }
+                this.spb.StartPositions[this.selectedStartPositionKey].Position = position;
+            }
+            else if (this.selectedViewerObject == ViewerSelectionType.Checkpoint &&
+                     this.cpb?.Checkpoints != null &&
+                     this.selectedCheckpointIndex >= 0 &&
+                     this.selectedCheckpointIndex < this.cpb.Checkpoints.Length)
+            {
+                LRVector3 position = this.cpb.Checkpoints[this.selectedCheckpointIndex].Location;
+                if (axis == 1)
+                {
+                    position.X += delta;
+                }
+                else if (axis == 2)
+                {
+                    position.Y += delta;
+                }
+                else if (axis == 3)
+                {
+                    position.Z += delta;
+                }
+                this.cpb.Checkpoints[this.selectedCheckpointIndex].Location = position;
+            }
+        }
+
+        private string GetScenePath(WDB scene)
+        {
+            return scene != null && this.scenePaths.ContainsKey(scene) ? this.scenePaths[scene] : string.Empty;
+        }
+
+        private string GetSceneName(WDB scene)
+        {
+            string scenePath = this.GetScenePath(scene);
+            return string.IsNullOrWhiteSpace(scenePath) ? "Scene" : Path.GetFileNameWithoutExtension(scenePath);
+        }
+
+        private string GetAnimatedObjectId(WDB scene, string objectName)
+        {
+            string scenePath = this.GetScenePath(scene);
+            string sceneName = this.GetSceneName(scene);
+            return (scenePath ?? sceneName) + "::" + objectName;
+        }
+
+        private List<string> GetModelMaterialNames(string modelName)
+        {
+            if (string.IsNullOrWhiteSpace(modelName) || !this.models.ContainsKey(modelName))
+            {
+                return new List<string>();
+            }
+
+            return this.models[modelName].parts
+                .Where(part => !string.IsNullOrWhiteSpace(part.material))
+                .Select(part => part.material)
+                .Distinct(StringComparer.InvariantCultureIgnoreCase)
+                .ToList();
+        }
+
+        private List<MabAnimationDefinition> GetAnimationsForMaterials(List<LoadedMabDefinition> loadedMabs, IEnumerable<string> materialNames)
+        {
+            HashSet<string> materialSet = new HashSet<string>(materialNames ?? Enumerable.Empty<string>(), StringComparer.InvariantCultureIgnoreCase);
+            List<MabAnimationDefinition> matches = new List<MabAnimationDefinition>();
+            if (loadedMabs == null || loadedMabs.Count == 0)
+            {
+                return matches;
+            }
+
+            foreach (LoadedMabDefinition mab in loadedMabs)
+            {
+                foreach (MabAnimationDefinition animation in mab.Animations)
+                {
+                    if (animation == null)
+                    {
+                        continue;
+                    }
+
+                    if (animation.ReferencedMaterials.Count == 0 || animation.ReferencedMaterials.Overlaps(materialSet))
+                    {
+                        matches.Add(animation);
+                    }
+                }
+            }
+
+            return matches;
+        }
+
+        public void RebuildAnimatedObjects()
+        {
+            this.animatedObjects.Clear();
+            List<WDB> scenes = new List<WDB>();
+            if (this.wdb != null)
+            {
+                scenes.Add(this.wdb);
+            }
+            scenes.AddRange(this.extraWdbScenes.Where(scene => scene != null));
+
+            foreach (WDB scene in scenes)
+            {
+                string scenePath = this.GetScenePath(scene);
+                string sceneName = this.GetSceneName(scene);
+                List<LoadedMabDefinition> loadedMabs = this.sceneMabs.ContainsKey(scene) ? this.sceneMabs[scene] : new List<LoadedMabDefinition>();
+                if (loadedMabs.Count == 0)
+                {
+                    continue;
+                }
+
+                void AddEntry(string objectName, string modelName, Matrix worldMatrix, AnimatedObjectType objectType)
+                {
+                    if (string.IsNullOrWhiteSpace(objectName) || string.IsNullOrWhiteSpace(modelName) || !this.models.ContainsKey(modelName))
+                    {
+                        return;
+                    }
+
+                    List<string> materialNames = this.GetModelMaterialNames(modelName);
+                    List<MabAnimationDefinition> matchingAnimations = this.GetAnimationsForMaterials(loadedMabs, materialNames);
+                    if (matchingAnimations.Count == 0)
+                    {
+                        return;
+                    }
+
+                    AnimatedObjectEntry entry = new AnimatedObjectEntry
+                    {
+                        Id = this.GetAnimatedObjectId(scene, objectName),
+                        ObjectName = objectName,
+                        SceneName = sceneName,
+                        ModelName = modelName,
+                        SourcePath = scenePath ?? string.Empty,
+                        SceneKey = scenePath ?? sceneName,
+                        ObjectType = objectType,
+                        WorldMatrix = worldMatrix,
+                        Scene = scene
+                    };
+
+                    foreach (string materialName in materialNames)
+                    {
+                        entry.MaterialNames.Add(materialName);
+                    }
+
+                    foreach (MabAnimationDefinition animation in matchingAnimations)
+                    {
+                        entry.Animations.Add(animation);
+                    }
+
+                    this.animatedObjects.Add(entry);
+                }
+
+                foreach (KeyValuePair<string, WDB_StaticModel> current in scene.StaticModels)
+                {
+                    if (current.Value?.ModelRef == null)
+                    {
+                        continue;
+                    }
+
+                    int gdbIndex = current.Value.ModelRef.IndexGDB;
+                    if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                    {
+                        continue;
+                    }
+
+                    AddEntry(
+                        current.Key,
+                        scene.GDBs[gdbIndex],
+                        CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
+                        AnimatedObjectType.StaticModel);
+                }
+
+                foreach (KeyValuePair<string, WDB_BDBModel> current in scene.BDBModels)
+                {
+                    if (current.Value?.ModelRef == null)
+                    {
+                        continue;
+                    }
+
+                    int gdbIndex = current.Value.ModelRef.IndexGDB;
+                    if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                    {
+                        continue;
+                    }
+
+                    AddEntry(
+                        current.Key,
+                        scene.GDBs[gdbIndex],
+                        CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
+                        AnimatedObjectType.BdbModel);
+                }
+
+                foreach (KeyValuePair<string, WDB_AnimatedModel> current in scene.AnimatedModels)
+                {
+                    if (current.Value?.ModelRef == null || !current.Value.ModelRef.IndexGDB.HasValue)
+                    {
+                        continue;
+                    }
+
+                    int gdbIndex = current.Value.ModelRef.IndexGDB.Value;
+                    if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                    {
+                        continue;
+                    }
+
+                    AddEntry(
+                        current.Key,
+                        scene.GDBs[gdbIndex],
+                        CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
+                        AnimatedObjectType.AnimatedModel);
+                }
+            }
+
+            HashSet<string> validIds = new HashSet<string>(this.animatedObjects.Select(entry => entry.Id), StringComparer.InvariantCultureIgnoreCase);
+            foreach (string key in this.animatedObjectPlaybacks.Keys.Where(key => !validIds.Contains(key)).ToList())
+            {
+                this.animatedObjectPlaybacks.Remove(key);
+            }
+        }
+
+        public void PlayAnimatedObject(AnimatedObjectEntry entry, MabAnimationDefinition animation, bool loop)
+        {
+            if (entry == null || animation == null)
+            {
+                return;
+            }
+
+            this.animatedObjectPlaybacks[entry.Id] = new AnimatedObjectPlayback
+            {
+                Entry = entry,
+                Animation = animation,
+                Loop = loop,
+                ElapsedSeconds = 0f
+            };
+        }
+
+        private Dictionary<string, Material> GetAnimatedMaterialOverrides(AnimatedObjectEntry entry)
+        {
+            if (entry == null || !this.animatedObjectPlaybacks.TryGetValue(entry.Id, out AnimatedObjectPlayback playback))
+            {
+                return null;
+            }
+
+            List<MabFrameDefinition> frameMaterials = playback.Animation.GetPlaybackFrame(playback.GetCurrentFrameIndex());
+            if (frameMaterials.Count == 0)
+            {
+                return null;
+            }
+
+            Dictionary<string, Material> overrides = new Dictionary<string, Material>(StringComparer.InvariantCultureIgnoreCase);
+            foreach (MabFrameDefinition frame in frameMaterials)
+            {
+                if (string.IsNullOrWhiteSpace(frame.MaterialName) || !this.materials.ContainsKey(frame.MaterialName))
+                {
+                    continue;
+                }
+
+                Material sourceMaterial = this.materials[frame.MaterialName];
+                overrides[frame.MaterialName] = Loader.ResolveAnimatedMaterialFrame(sourceMaterial, base.GraphicsDevice, frame.FrameIndex);
+            }
+
+            return overrides.Count == 0 ? null : overrides;
+        }
+
+        private void DrawScene(WDB scene)
+        {
+            if (scene == null)
+            {
+                return;
+            }
+
+            if (this.doDrawStaticObj)
+            {
+                HashSet<int> referencedGdbIndices = new HashSet<int>();
+                foreach (KeyValuePair<string, WDB_StaticModel> current in scene.StaticModels)
+                {
+                    if (current.Value?.ModelRef == null)
+                    {
+                        continue;
+                    }
+
+                    int gdbIndex = current.Value.ModelRef.IndexGDB;
+                    if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                    {
+                        continue;
+                    }
+
+                    string gdbName = scene.GDBs[gdbIndex];
+                    if (!this.models.ContainsKey(gdbName))
+                    {
+                        continue;
+                    }
+
+                    referencedGdbIndices.Add(gdbIndex);
+                    AnimatedObjectEntry entry = this.animatedObjects.FirstOrDefault(item => string.Equals(item.Id, this.GetAnimatedObjectId(scene, current.Key), StringComparison.InvariantCultureIgnoreCase));
+                    this.models[gdbName].Draw(this, this.basicEffect, CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
+                }
+
+                foreach (KeyValuePair<string, WDB_BDBModel> current in scene.BDBModels)
+                {
+                    if (current.Value?.ModelRef == null)
+                    {
+                        continue;
+                    }
+
+                    int gdbIndex = current.Value.ModelRef.IndexGDB;
+                    if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                    {
+                        continue;
+                    }
+
+                    string gdbName = scene.GDBs[gdbIndex];
+                    if (!this.models.ContainsKey(gdbName))
+                    {
+                        continue;
+                    }
+
+                    referencedGdbIndices.Add(gdbIndex);
+                    AnimatedObjectEntry entry = this.animatedObjects.FirstOrDefault(item => string.Equals(item.Id, this.GetAnimatedObjectId(scene, current.Key), StringComparison.InvariantCultureIgnoreCase));
+                    this.models[gdbName].Draw(this, this.basicEffect, CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
+                }
+
+                for (int i = 0; i < scene.GDBs.Length; i++)
+                {
+                    if (!referencedGdbIndices.Contains(i) && this.models.ContainsKey(scene.GDBs[i]))
+                    {
+                        this.models[scene.GDBs[i]].Draw(this, this.basicEffect);
+                    }
+                }
+            }
+
+            if (this.doDrawAnimObj)
+            {
+                foreach (KeyValuePair<string, WDB_AnimatedModel> current in scene.AnimatedModels)
+                {
+                    if (current.Value?.ModelRef == null || !current.Value.ModelRef.IndexGDB.HasValue)
+                    {
+                        continue;
+                    }
+
+                    int gdbIndex = current.Value.ModelRef.IndexGDB.Value;
+                    if (gdbIndex < 0 || gdbIndex >= scene.GDBs.Length)
+                    {
+                        continue;
+                    }
+
+                    string gdbName = scene.GDBs[gdbIndex];
+                    if (!this.models.ContainsKey(gdbName))
+                    {
+                        continue;
+                    }
+
+                    AnimatedObjectEntry entry = this.animatedObjects.FirstOrDefault(item => string.Equals(item.Id, this.GetAnimatedObjectId(scene, current.Key), StringComparison.InvariantCultureIgnoreCase));
+                    this.models[gdbName].Draw(this, this.basicEffect, CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
+                }
+            }
+        }
+
+        private static Matrix CreateWorldMatrix(LRVector3 position, LRVector3 rotationFwd, LRVector3 rotationUp)
+        {
+            Vector3 right = Vector3.Cross(rotationUp.toXNAVector(), rotationFwd.toXNAVector());
+            return new Matrix(rotationFwd.X, rotationFwd.Y, rotationFwd.Z, 0f, right.X, right.Y, right.Z, 0f, rotationUp.X, rotationUp.Y, rotationUp.Z, 0f, position.X, position.Y, position.Z, 1f);
+        }
+
         public void ClearTrackData()
         {
             this.track = false;
             this.rab = null;
             this.pwb = null;
             this.wdb = null;
+            this.extraWdbScenes.Clear();
+            this.scenePaths.Clear();
+            this.sceneMabs.Clear();
+            this.animatedObjects.Clear();
+            this.animatedObjectPlaybacks.Clear();
             this.spb = null;
             this.cpb = null;
             this.hzb = null;
@@ -789,14 +1209,21 @@
             this.skbmesh = null;
             this.embs.Clear();
             this.rrbs.Clear();
-            foreach (LR1TrackEditor.Model collisionModel in this.collisionModels)
+            foreach (LR1TrackEditor.Model model in this.models.Values)
             {
-                DisposeModelBuffers(collisionModel);
+                DisposeModelBuffers(model);
+            }
+            this.models.Clear();
+            this.materials.Clear();
+            foreach (CollisionModelInstance collisionModel in this.collisionModels)
+            {
+                DisposeModelBuffers(collisionModel?.Model);
             }
             this.collisionModels.Clear();
             this.currentPWBfile = "";
             this.currentWDBfile = "";
             this.currentRABfile = "";
+            this.ClearViewerSelection();
         }
 
         public void Select(int mousex, int mousey, bool multiselect)
@@ -808,8 +1235,55 @@
             float maxValue = float.MaxValue;
             if ((this.editmode != 1) || (this.pwb is null))
             {
-                if (this.editmode == 2)
+                ViewerSelectionType selectedType = ViewerSelectionType.None;
+                int selectedIndex = -1;
+                if (this.spb?.StartPositions != null)
                 {
+                    foreach (KeyValuePair<int, SPB_StartPosition> current in this.spb.StartPositions)
+                    {
+                        Vector3 markerPosition = current.Value.Position.toXNAVector();
+                        BoundingBox box = new BoundingBox(markerPosition - new Vector3(8f), markerPosition + new Vector3(8f));
+                        float? hit = input.Intersects(box);
+                        if (hit != null && hit.Value < maxValue)
+                        {
+                            maxValue = hit.Value;
+                            selectedType = ViewerSelectionType.StartPosition;
+                            selectedIndex = current.Key;
+                        }
+                    }
+                }
+
+                if (this.cpb?.Checkpoints != null)
+                {
+                    for (int i = 0; i < this.cpb.Checkpoints.Length; i++)
+                    {
+                        Vector3 markerPosition = this.cpb.Checkpoints[i].Location.toXNAVector();
+                        BoundingBox box = new BoundingBox(markerPosition - new Vector3(10f), markerPosition + new Vector3(10f));
+                        float? hit = input.Intersects(box);
+                        if (hit != null && hit.Value < maxValue)
+                        {
+                            maxValue = hit.Value;
+                            selectedType = ViewerSelectionType.Checkpoint;
+                            selectedIndex = i;
+                        }
+                    }
+                }
+
+                if (selectedType == ViewerSelectionType.StartPosition)
+                {
+                    this.selectedViewerObject = ViewerSelectionType.StartPosition;
+                    this.selectedStartPositionKey = selectedIndex;
+                    this.selectedCheckpointIndex = -1;
+                }
+                else if (selectedType == ViewerSelectionType.Checkpoint)
+                {
+                    this.selectedViewerObject = ViewerSelectionType.Checkpoint;
+                    this.selectedCheckpointIndex = selectedIndex;
+                    this.selectedStartPositionKey = -1;
+                }
+                else
+                {
+                    this.ClearViewerSelection();
                 }
             }
             else
@@ -934,7 +1408,7 @@
                 this.width = presentationParameters.BackBufferWidth = this.surfacesize.Width;
                 this.height = presentationParameters.BackBufferHeight = this.surfacesize.Height;
                 this.graphics.GraphicsDevice.Reset(presentationParameters);
-                this.basicEffect.Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(LR1TrackEditor.Settings.Default.FoV), ((float)this.width) / ((float)this.height), 1f, LR1TrackEditor.Settings.Default.RenderDistance);
+                this.RefreshProjectionSettings();
             }
         }
 
@@ -968,7 +1442,7 @@
                 base.IsMouseVisible = false;
                 this.mouselock = true;
             }
-            this.basicEffect.Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(LR1TrackEditor.Settings.Default.FoV), ((float)this.width) / ((float)this.height), 1f, LR1TrackEditor.Settings.Default.RenderDistance);
+            this.RefreshProjectionSettings();
         }
 
         protected override void Update(GameTime gameTime)
@@ -983,6 +1457,18 @@
             if (this.brickrotation >= 2f)
             {
                 this.brickrotation -= 2f;
+            }
+            if (this.animatedObjectPlaybacks.Count > 0)
+            {
+                float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+                foreach (KeyValuePair<string, AnimatedObjectPlayback> current in this.animatedObjectPlaybacks.ToList())
+                {
+                    current.Value.ElapsedSeconds += elapsedSeconds;
+                    if (current.Value.IsFinished())
+                    {
+                        this.animatedObjectPlaybacks.Remove(current.Key);
+                    }
+                }
             }
             base.Update(gameTime);
         }

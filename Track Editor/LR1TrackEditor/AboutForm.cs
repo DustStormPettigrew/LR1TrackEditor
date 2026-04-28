@@ -42,9 +42,9 @@
             this.label1.Font = new Font("Tahoma", 9f, FontStyle.Regular, GraphicsUnit.Point, 0);
             this.label1.Location = new Point(12, 9);
             this.label1.Name = "label1";
-            this.label1.Size = new Size(0x12e, 140);
+            this.label1.Size = new Size(0x12e, 170);
             this.label1.TabIndex = 0;
-            this.label1.Text = "TrackEditor\r\n\r\nMade by grappigegovert\r\n\r\nUses LibLR1 by Will Kirkby\r\n\r\n\r\nThanks to:\r\nSluicer - for working out GDB and BMP formats\r\nWillKirkby - for LibLR1 and for the original GDB_Viewer";
+            this.label1.Text = "TrackEditor\r\n\r\nOriginally made by grappigegovert\r\nMaintained and updated by Dust Storm\r\n\r\nUses LibLR1 by Will Kirkby\r\n\r\nThanks to:\r\nSluicer - for working out GDB and BMP formats\r\nWillKirkby - for LibLR1 and for the original GDB_Viewer";
             this.versionLabel.AutoSize = true;
             this.versionLabel.Location = new Point(0x65, 10);
             this.versionLabel.Name = "versionLabel";
@@ -53,7 +53,7 @@
             this.versionLabel.Text = "v1.0.1000.5000";
             this.versionLabel.Click += new EventHandler(this.versionLabel_Click);
             this.linkLabel1.AutoSize = true;
-            this.linkLabel1.Location = new Point(12, 0x51);
+            this.linkLabel1.Location = new Point(12, 0x68);
             this.linkLabel1.Name = "linkLabel1";
             this.linkLabel1.Size = new Size(0xb6, 13);
             this.linkLabel1.TabIndex = 2;
@@ -68,7 +68,7 @@
             this.pictureBox1.Visible = false;
             base.AutoScaleDimensions = new SizeF(6f, 13f);
             base.AutoScaleMode = AutoScaleMode.Font;
-            base.ClientSize = new Size(0x14c, 0x9e);
+            base.ClientSize = new Size(0x14c, 0xb8);
             base.Controls.Add(this.pictureBox1);
             base.Controls.Add(this.linkLabel1);
             base.Controls.Add(this.versionLabel);

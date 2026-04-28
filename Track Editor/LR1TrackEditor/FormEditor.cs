@@ -45,6 +45,16 @@
         private TabPage tpPWB;
         private TabPage tabPage3;
         private TabPage tabPage4;
+        private ListBox StaticObjectListBox;
+        private Label StaticObjectLabel;
+        private Label StaticObjectStatusLabel;
+        private ListBox AnimatedObjectListBox;
+        private ComboBox AnimatedObjectAnimationComboBox;
+        private CheckBox AnimatedObjectLoopCheckBox;
+        private Button AnimatedObjectRunButton;
+        private Label AnimatedObjectLabel;
+        private Label AnimatedObjectAnimationLabel;
+        private Label AnimatedObjectStatusLabel;
         private Label label2;
         private Label label1;
         private GroupBox groupBox1;
@@ -332,6 +342,7 @@
                     {
                         this.game.pwb.WhiteBricks[selectedItem.index].Position = new LRVector3(num, num2, num3);
                     }
+                    this.MarkPwbEdited();
                     this.refreshPWB(true);
                 }
             }
@@ -376,6 +387,46 @@
             {
                 this.edits.Remove(format);
             }
+        }
+
+        public void MarkPwbEdited()
+        {
+            if (!this.edits.Contains("PWB"))
+            {
+                this.edits.Add("PWB");
+            }
+        }
+
+        public void RefreshSelectedBrickFields()
+        {
+            if (this.PWBListBox.SelectedItems.Count == 1)
+            {
+                Brick selectedItem = (Brick)this.PWBListBox.SelectedItem;
+                this.BrickColorComboBox.SelectedItem = selectedItem.Color;
+                this.BrickXtextBox.Text = selectedItem.Position.X.ToString(ci);
+                this.BrickYtextBox.Text = selectedItem.Position.Y.ToString(ci);
+                this.BrickZtextBox.Text = selectedItem.Position.Z.ToString(ci);
+                return;
+            }
+
+            if (this.PWBListBox.SelectedItems.Count == 0)
+            {
+                this.BrickColorComboBox.SelectedIndex = -1;
+                this.BrickXtextBox.Text = "";
+                this.BrickYtextBox.Text = "";
+                this.BrickZtextBox.Text = "";
+                return;
+            }
+
+            string text = this.BrickZtextBox.Text = "";
+            this.BrickXtextBox.Text = this.BrickYtextBox.Text = text;
+            bool sameColor = true;
+            string color = ((Brick)this.PWBListBox.SelectedItems[0]).Color;
+            foreach (Brick current in this.PWBListBox.SelectedItems)
+            {
+                sameColor &= current.Color == color;
+            }
+            this.BrickColorComboBox.SelectedIndex = sameColor ? this.BrickColorComboBox.Items.IndexOf(color) : -1;
         }
 
         private void ColorBox_Click(object sender, EventArgs e)
@@ -767,6 +818,16 @@
             this.label32 = new Label();
             this.tabPage3 = new TabPage();
             this.tabPage4 = new TabPage();
+            this.StaticObjectStatusLabel = new Label();
+            this.StaticObjectListBox = new ListBox();
+            this.StaticObjectLabel = new Label();
+            this.AnimatedObjectStatusLabel = new Label();
+            this.AnimatedObjectRunButton = new Button();
+            this.AnimatedObjectLoopCheckBox = new CheckBox();
+            this.AnimatedObjectAnimationComboBox = new ComboBox();
+            this.AnimatedObjectAnimationLabel = new Label();
+            this.AnimatedObjectListBox = new ListBox();
+            this.AnimatedObjectLabel = new Label();
             this.tabPage1 = new TabPage();
             this.DebugButton2 = new Button();
             this.DebugButton1 = new Button();
@@ -1466,6 +1527,26 @@
             this.tabPage3.TabIndex = 2;
             this.tabPage3.Text = "Static objects";
             this.tabPage3.UseVisualStyleBackColor = true;
+            this.tabPage3.Controls.Add(this.StaticObjectStatusLabel);
+            this.tabPage3.Controls.Add(this.StaticObjectListBox);
+            this.tabPage3.Controls.Add(this.StaticObjectLabel);
+            this.StaticObjectLabel.AutoSize = true;
+            this.StaticObjectLabel.Location = new System.Drawing.Point(6, 6);
+            this.StaticObjectLabel.Name = "StaticObjectLabel";
+            this.StaticObjectLabel.Size = new Size(95, 0x11);
+            this.StaticObjectLabel.TabIndex = 0;
+            this.StaticObjectLabel.Text = "Loaded static objects:";
+            this.StaticObjectListBox.FormattingEnabled = true;
+            this.StaticObjectListBox.ItemHeight = 0x10;
+            this.StaticObjectListBox.Location = new System.Drawing.Point(6, 0x16);
+            this.StaticObjectListBox.Name = "StaticObjectListBox";
+            this.StaticObjectListBox.Size = new Size(0xe4, 0x10a);
+            this.StaticObjectListBox.TabIndex = 1;
+            this.StaticObjectStatusLabel.Location = new System.Drawing.Point(6, 0x125);
+            this.StaticObjectStatusLabel.Name = "StaticObjectStatusLabel";
+            this.StaticObjectStatusLabel.Size = new Size(0xe4, 0x55);
+            this.StaticObjectStatusLabel.TabIndex = 2;
+            this.StaticObjectStatusLabel.Text = "No static objects loaded.";
             this.tabPage4.Location = new System.Drawing.Point(4, 0x19);
             this.tabPage4.Name = "tabPage4";
             this.tabPage4.Padding = new Padding(3);
@@ -1473,6 +1554,57 @@
             this.tabPage4.TabIndex = 3;
             this.tabPage4.Text = "Animated Objects";
             this.tabPage4.UseVisualStyleBackColor = true;
+            this.tabPage4.Controls.Add(this.AnimatedObjectStatusLabel);
+            this.tabPage4.Controls.Add(this.AnimatedObjectRunButton);
+            this.tabPage4.Controls.Add(this.AnimatedObjectLoopCheckBox);
+            this.tabPage4.Controls.Add(this.AnimatedObjectAnimationComboBox);
+            this.tabPage4.Controls.Add(this.AnimatedObjectAnimationLabel);
+            this.tabPage4.Controls.Add(this.AnimatedObjectListBox);
+            this.tabPage4.Controls.Add(this.AnimatedObjectLabel);
+            this.AnimatedObjectLabel.AutoSize = true;
+            this.AnimatedObjectLabel.Location = new System.Drawing.Point(6, 6);
+            this.AnimatedObjectLabel.Name = "AnimatedObjectLabel";
+            this.AnimatedObjectLabel.Size = new Size(110, 0x11);
+            this.AnimatedObjectLabel.TabIndex = 0;
+            this.AnimatedObjectLabel.Text = "Loaded animated objects:";
+            this.AnimatedObjectListBox.FormattingEnabled = true;
+            this.AnimatedObjectListBox.ItemHeight = 0x10;
+            this.AnimatedObjectListBox.Location = new System.Drawing.Point(6, 0x16);
+            this.AnimatedObjectListBox.Name = "AnimatedObjectListBox";
+            this.AnimatedObjectListBox.Size = new Size(0xe4, 0xb0);
+            this.AnimatedObjectListBox.TabIndex = 1;
+            this.AnimatedObjectListBox.SelectedIndexChanged += new EventHandler(this.AnimatedObjectListBox_SelectedIndexChanged);
+            this.AnimatedObjectAnimationLabel.AutoSize = true;
+            this.AnimatedObjectAnimationLabel.Location = new System.Drawing.Point(6, 0xcc);
+            this.AnimatedObjectAnimationLabel.Name = "AnimatedObjectAnimationLabel";
+            this.AnimatedObjectAnimationLabel.Size = new Size(0x40, 0x11);
+            this.AnimatedObjectAnimationLabel.TabIndex = 2;
+            this.AnimatedObjectAnimationLabel.Text = "Animation:";
+            this.AnimatedObjectAnimationComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            this.AnimatedObjectAnimationComboBox.FormattingEnabled = true;
+            this.AnimatedObjectAnimationComboBox.Location = new System.Drawing.Point(9, 0xdf);
+            this.AnimatedObjectAnimationComboBox.Name = "AnimatedObjectAnimationComboBox";
+            this.AnimatedObjectAnimationComboBox.Size = new Size(0xe1, 0x18);
+            this.AnimatedObjectAnimationComboBox.TabIndex = 3;
+            this.AnimatedObjectLoopCheckBox.AutoSize = true;
+            this.AnimatedObjectLoopCheckBox.Location = new System.Drawing.Point(9, 0x104);
+            this.AnimatedObjectLoopCheckBox.Name = "AnimatedObjectLoopCheckBox";
+            this.AnimatedObjectLoopCheckBox.Size = new Size(0x37, 0x15);
+            this.AnimatedObjectLoopCheckBox.TabIndex = 4;
+            this.AnimatedObjectLoopCheckBox.Text = "Loop";
+            this.AnimatedObjectLoopCheckBox.UseVisualStyleBackColor = true;
+            this.AnimatedObjectRunButton.Location = new System.Drawing.Point(9, 0x11f);
+            this.AnimatedObjectRunButton.Name = "AnimatedObjectRunButton";
+            this.AnimatedObjectRunButton.Size = new Size(0x63, 0x17);
+            this.AnimatedObjectRunButton.TabIndex = 5;
+            this.AnimatedObjectRunButton.Text = "Run animation";
+            this.AnimatedObjectRunButton.UseVisualStyleBackColor = true;
+            this.AnimatedObjectRunButton.Click += new EventHandler(this.AnimatedObjectRunButton_Click);
+            this.AnimatedObjectStatusLabel.Location = new System.Drawing.Point(6, 0x13d);
+            this.AnimatedObjectStatusLabel.Name = "AnimatedObjectStatusLabel";
+            this.AnimatedObjectStatusLabel.Size = new Size(0xe4, 0x3d);
+            this.AnimatedObjectStatusLabel.TabIndex = 6;
+            this.AnimatedObjectStatusLabel.Text = "No animated objects loaded.";
             this.tabPage1.Controls.Add(this.DebugButton2);
             this.tabPage1.Controls.Add(this.DebugButton1);
             this.tabPage1.Controls.Add(this.DebugListView);
@@ -1523,73 +1655,73 @@
             this.Brickplacelabel.Text = "Currently placing a brick...";
             this.Brickplacelabel.Visible = false;
             this.label14.AutoSize = true;
-            this.label14.Location = new System.Drawing.Point(0, 2);
+            this.label14.Location = new System.Drawing.Point(0, 0);
             this.label14.Name = "label14";
             this.label14.Size = new Size(0x40, 0x11);
             this.label14.TabIndex = 4;
             this.label14.Text = "Controls:";
             this.label15.AutoSize = true;
-            this.label15.Location = new System.Drawing.Point(0, 0x15);
+            this.label15.Location = new System.Drawing.Point(0, 0x0B);
             this.label15.Name = "label15";
             this.label15.Size = new Size(0x9f, 0x11);
             this.label15.TabIndex = 5;
             this.label15.Text = "W,A,S,D - Move camera";
             this.label16.AutoSize = true;
-            this.label16.Location = new System.Drawing.Point(0, 0x22);
+            this.label16.Location = new System.Drawing.Point(0, 0x23);
             this.label16.Name = "label16";
             this.label16.Size = new Size(210, 0x11);
             this.label16.TabIndex = 6;
             this.label16.Text = "Space, Lshift - Camera up-down";
             this.label17.AutoSize = true;
-            this.label17.Location = new System.Drawing.Point(0, 0x2f);
+            this.label17.Location = new System.Drawing.Point(0, 0x3B);
             this.label17.Name = "label17";
             this.label17.Size = new Size(0xec, 0x11);
             this.label17.TabIndex = 7;
             this.label17.Text = "Right mouse (drag) - Rotate camera";
             this.label19.AutoSize = true;
-            this.label19.Location = new System.Drawing.Point(0xa2, 0x15);
+            this.label19.Location = new System.Drawing.Point(0, 0x17);
             this.label19.Name = "label19";
             this.label19.Size = new Size(0x85, 0x11);
             this.label19.TabIndex = 9;
             this.label19.Text = "Esc - Unlock mouse";
             this.label20.AutoSize = true;
-            this.label20.Location = new System.Drawing.Point(0xa9, 0x22);
+            this.label20.Location = new System.Drawing.Point(0, 0x2F);
             this.label20.Name = "label20";
             this.label20.Size = new Size(0x7d, 0x11);
             this.label20.TabIndex = 10;
             this.label20.Text = "Del - Delete object";
             this.label21.AutoSize = true;
-            this.label21.Location = new System.Drawing.Point(0, 60);
+            this.label21.Location = new System.Drawing.Point(0, 0x47);
             this.label21.Name = "label21";
             this.label21.Size = new Size(0xde, 0x11);
             this.label21.TabIndex = 11;
             this.label21.Text = "Mouse scroll - Change cam speed";
             this.label22.AutoSize = true;
-            this.label22.Location = new System.Drawing.Point(0xa8, 0x56);
+            this.label22.Location = new System.Drawing.Point(0, 0x6B);
             this.label22.Name = "label22";
             this.label22.Size = new Size(0x80, 0x11);
             this.label22.TabIndex = 12;
             this.label22.Text = "T - Toggle textures";
             this.label23.AutoSize = true;
-            this.label23.Location = new System.Drawing.Point(0, 0x49);
+            this.label23.Location = new System.Drawing.Point(0, 0x53);
             this.label23.Name = "label23";
             this.label23.Size = new Size(0xa1, 0x11);
             this.label23.TabIndex = 13;
             this.label23.Text = "R - Reset view to (0,0,0)";
             this.label24.AutoSize = true;
-            this.label24.Location = new System.Drawing.Point(0, 0x56);
+            this.label24.Location = new System.Drawing.Point(0, 0x5F);
             this.label24.Name = "label24";
             this.label24.Size = new Size(0xbc, 0x11);
             this.label24.TabIndex = 14;
             this.label24.Text = "Alt+Enter - Toggle fullscreen";
             this.label25.AutoSize = true;
-            this.label25.Location = new System.Drawing.Point(0, 0x63);
+            this.label25.Location = new System.Drawing.Point(0, 0x77);
             this.label25.Name = "label25";
             this.label25.Size = new Size(0x89, 0x11);
             this.label25.TabIndex = 15;
             this.label25.Text = "F1 - Toggle Fillmode";
             this.label26.AutoSize = true;
-            this.label26.Location = new System.Drawing.Point(0x9d, 0x63);
+            this.label26.Location = new System.Drawing.Point(0, 0x83);
             this.label26.Name = "label26";
             this.label26.Size = new Size(0x8f, 0x11);
             this.label26.TabIndex = 0x10;
@@ -1607,33 +1739,33 @@
             this.panel1.Controls.Add(this.label19);
             this.panel1.Controls.Add(this.label21);
             this.panel1.Controls.Add(this.label20);
-            this.panel1.Location = new System.Drawing.Point(0x331, 0x1ed);
+            this.panel1.Location = new System.Drawing.Point(0x331, 0x1D2);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new Size(0x10b, 0x75);
+            this.panel1.Size = new Size(0x10b, 0x90);
             this.panel1.TabIndex = 0x11;
             this.label27.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             this.label27.AutoSize = true;
-            this.label27.Location = new System.Drawing.Point(0x331, 0x1c8);
+            this.label27.Location = new System.Drawing.Point(0x331, 0x1B7);
             this.label27.Name = "label27";
             this.label27.Size = new Size(0x58, 0x11);
             this.label27.TabIndex = 0x12;
             this.label27.Text = "Camera pos:";
             this.CameraPositionLabel.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             this.CameraPositionLabel.AutoSize = true;
-            this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1c8);
+            this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1B7);
             this.CameraPositionLabel.Name = "CameraPositionLabel";
             this.CameraPositionLabel.Size = new Size(0x3a, 0x11);
             this.CameraPositionLabel.TabIndex = 0x13;
             this.CameraPositionLabel.Text = "{0, 0, 0}";
             this.CameraSpeedHeaderLabel.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             this.CameraSpeedHeaderLabel.AutoSize = true;
-            this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x331, 0x1d9);
+            this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x331, 0x1C4);
             this.CameraSpeedHeaderLabel.Name = "CameraSpeedHeaderLabel";
             this.CameraSpeedHeaderLabel.TabIndex = 0x14;
             this.CameraSpeedHeaderLabel.Text = "Cam speed:";
             this.CameraSpeedLabel.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
             this.CameraSpeedLabel.AutoSize = true;
-            this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1d9);
+            this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1C4);
             this.CameraSpeedLabel.Name = "CameraSpeedLabel";
             this.CameraSpeedLabel.TabIndex = 0x15;
             this.CameraSpeedLabel.Text = "0";
@@ -1736,6 +1868,11 @@
         public bool OpenWarning() =>
             (this.edits.Count <= 0) || (System.Windows.Forms.MessageBox.Show("You have made changes in: " + string.Join(", ", this.edits) + "\n Do you want to discard these changes and load a new file anyway?", "Warning", MessageBoxButtons.YesNo) == DialogResult.Yes);
 
+        public void ApplyRuntimeSettings()
+        {
+            this.game.RefreshProjectionSettings();
+        }
+
         private void tsmiOptions_Click(object sender, EventArgs e)
         {
             OptionsForm objA = new OptionsForm(this);
@@ -1810,66 +1947,16 @@
             }
             this.game.SelectedBrickIndices = list;
             this.game.SelectedBricksColored = list2;
-            if (list.Count == 1)
-            {
-                Brick selectedItem = (Brick)this.PWBListBox.SelectedItem;
-                this.BrickColorComboBox.SelectedItem = selectedItem.Color;
-                this.BrickXtextBox.Text = selectedItem.Position.X.ToString(ci);
-                this.BrickYtextBox.Text = selectedItem.Position.Y.ToString(ci);
-                this.BrickZtextBox.Text = selectedItem.Position.Z.ToString(ci);
-            }
-            else
-            {
-                flag2 = list.Count <= 1;
-                if (flag2)
-                {
-                    this.BrickColorComboBox.SelectedIndex = -1;
-                    this.BrickXtextBox.Text = "";
-                    this.BrickYtextBox.Text = "";
-                    this.BrickZtextBox.Text = "";
-                }
-                else
-                {
-                    string text1 = this.BrickZtextBox.Text = "";
-                    this.BrickXtextBox.Text = this.BrickYtextBox.Text = text1;
-                    bool flag = true;
-                    string color = ((Brick)this.PWBListBox.SelectedItems[0]).Color;
-                    enumerator = this.PWBListBox.SelectedItems.GetEnumerator();
-                    try
-                    {
-                        while (true)
-                        {
-                            flag2 = enumerator.MoveNext();
-                            if (!flag2)
-                            {
-                                break;
-                            }
-                            current = (Brick)enumerator.Current;
-                            flag &= current.Color == color;
-                        }
-                    }
-                    finally
-                    {
-                        disposable = enumerator as IDisposable;
-                        if (disposable is object)
-                        {
-                            disposable.Dispose();
-                        }
-                    }
-                    if (flag)
-                    {
-                        this.BrickColorComboBox.SelectedItem = color;
-                    }
-                    else
-                    {
-                        this.BrickColorComboBox.SelectedIndex = -1;
-                    }
-                }
-            }
+            this.RefreshSelectedBrickFields();
         }
 
         private void PWBSaveAs()
         {
+            if (this.game.pwb is null)
+            {
+                return;
+            }
+
             SaveFileDialog dialog = new SaveFileDialog
             {
                 Filter = "Powerups|*.PWB",
@@ -1877,6 +1964,16 @@
                 AddExtension = true,
                 OverwritePrompt = true
             };
+            if (!string.IsNullOrWhiteSpace(this.game.currentPWBfile))
+            {
+                string initialDirectory = Path.GetDirectoryName(this.game.currentPWBfile);
+                if (!string.IsNullOrWhiteSpace(initialDirectory) && Directory.Exists(initialDirectory))
+                {
+                    dialog.InitialDirectory = initialDirectory;
+                }
+                dialog.FileName = Path.GetFileName(this.game.currentPWBfile);
+            }
+
             if (Utils.STAShowDialog(dialog) == DialogResult.OK)
             {
                 if (File.Exists(dialog.FileName))
@@ -1884,6 +1981,7 @@
                     File.Delete(dialog.FileName);
                 }
                 this.game.pwb.Save(dialog.FileName);
+                this.game.currentPWBfile = dialog.FileName;
                 Utils.WriteLine("Saved PWB " + dialog.FileName, ConsoleColor.White);
                 this.edits.Remove("PWB");
             }
@@ -2042,8 +2140,132 @@
             }
         }
 
+        private void AnimatedObjectListBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            this.AnimatedObjectAnimationComboBox.Items.Clear();
+            this.AnimatedObjectAnimationComboBox.Enabled = false;
+            this.AnimatedObjectRunButton.Enabled = false;
+            if (!(this.AnimatedObjectListBox.SelectedItem is AnimatedObjectEntry selectedEntry))
+            {
+                this.AnimatedObjectStatusLabel.Text = "No animated object selected.";
+                return;
+            }
+
+            foreach (MabAnimationDefinition animation in selectedEntry.Animations)
+            {
+                this.AnimatedObjectAnimationComboBox.Items.Add(animation);
+            }
+
+            this.AnimatedObjectAnimationComboBox.DisplayMember = "DisplayName";
+            this.AnimatedObjectAnimationComboBox.Enabled = this.AnimatedObjectAnimationComboBox.Items.Count > 0;
+            this.AnimatedObjectRunButton.Enabled = this.AnimatedObjectAnimationComboBox.Items.Count > 0;
+            if (this.AnimatedObjectAnimationComboBox.Items.Count > 0)
+            {
+                this.AnimatedObjectAnimationComboBox.SelectedIndex = 0;
+            }
+
+            this.AnimatedObjectStatusLabel.Text =
+                selectedEntry.ObjectName + Environment.NewLine +
+                "Model: " + selectedEntry.ModelName + Environment.NewLine +
+                "Type: " + selectedEntry.ObjectType + Environment.NewLine +
+                "Animations: " + selectedEntry.Animations.Count.ToString(ci);
+        }
+
+        private void AnimatedObjectRunButton_Click(object sender, EventArgs e)
+        {
+            if (!(this.AnimatedObjectListBox.SelectedItem is AnimatedObjectEntry selectedEntry) ||
+                !(this.AnimatedObjectAnimationComboBox.SelectedItem is MabAnimationDefinition selectedAnimation))
+            {
+                return;
+            }
+
+            this.game.PlayAnimatedObject(selectedEntry, selectedAnimation, this.AnimatedObjectLoopCheckBox.Checked);
+            if (selectedEntry.ObjectType == AnimatedObjectType.AnimatedModel)
+            {
+                this.tsmiAnimatedObjects.Checked = true;
+            }
+            else
+            {
+                this.tsmiStaticObjects.Checked = true;
+            }
+            this.AnimatedObjectStatusLabel.Text =
+                "Running " + selectedAnimation.DisplayName + Environment.NewLine +
+                "Object: " + selectedEntry.ObjectName + Environment.NewLine +
+                "Loop: " + (this.AnimatedObjectLoopCheckBox.Checked ? "Yes" : "No");
+        }
+
+        public void refreshStaticObjects()
+        {
+            this.StaticObjectListBox.Items.Clear();
+            List<string> items = new List<string>();
+            List<WDB> scenes = new List<WDB>();
+            if (this.game.wdb != null)
+            {
+                scenes.Add(this.game.wdb);
+            }
+            scenes.AddRange(this.game.extraWdbScenes.Where(scene => scene != null));
+
+            foreach (WDB scene in scenes)
+            {
+                string scenePath = this.game.scenePaths.ContainsKey(scene) ? this.game.scenePaths[scene] : string.Empty;
+                string sceneName = string.IsNullOrWhiteSpace(scenePath) ? "Scene" : Path.GetFileNameWithoutExtension(scenePath);
+                foreach (KeyValuePair<string, WDB_StaticModel> current in scene.StaticModels.OrderBy(item => item.Key, StringComparer.InvariantCultureIgnoreCase))
+                {
+                    string modelName = "<none>";
+                    if (current.Value?.ModelRef != null &&
+                        current.Value.ModelRef.IndexGDB >= 0 &&
+                        current.Value.ModelRef.IndexGDB < scene.GDBs.Length)
+                    {
+                        modelName = scene.GDBs[current.Value.ModelRef.IndexGDB];
+                    }
+                    items.Add(sceneName + " :: " + current.Key + " [" + modelName + "]");
+                }
+
+                foreach (KeyValuePair<string, WDB_BDBModel> current in scene.BDBModels.OrderBy(item => item.Key, StringComparer.InvariantCultureIgnoreCase))
+                {
+                    string modelName = "<none>";
+                    if (current.Value?.ModelRef != null &&
+                        current.Value.ModelRef.IndexGDB >= 0 &&
+                        current.Value.ModelRef.IndexGDB < scene.GDBs.Length)
+                    {
+                        modelName = scene.GDBs[current.Value.ModelRef.IndexGDB];
+                    }
+                    items.Add(sceneName + " :: " + current.Key + " [" + modelName + "]");
+                }
+            }
+
+            foreach (string item in items)
+            {
+                this.StaticObjectListBox.Items.Add(item);
+            }
+
+            this.StaticObjectStatusLabel.Text = items.Count == 0
+                ? "No static objects loaded."
+                : items.Count.ToString(ci) + " static objects loaded.";
+        }
+
         public void refreshWDB()
         {
+            this.refreshStaticObjects();
+            this.game.RebuildAnimatedObjects();
+            this.AnimatedObjectListBox.Items.Clear();
+            this.AnimatedObjectAnimationComboBox.Items.Clear();
+            this.AnimatedObjectAnimationComboBox.Enabled = false;
+            this.AnimatedObjectRunButton.Enabled = false;
+
+            foreach (AnimatedObjectEntry entry in this.game.animatedObjects.OrderBy(item => item.SceneName, StringComparer.InvariantCultureIgnoreCase).ThenBy(item => item.ObjectName, StringComparer.InvariantCultureIgnoreCase))
+            {
+                this.AnimatedObjectListBox.Items.Add(entry);
+            }
+
+            if (this.game.animatedObjects.Count == 0)
+            {
+                this.AnimatedObjectStatusLabel.Text = "No animatable objects loaded.";
+                return;
+            }
+
+            this.AnimatedObjectStatusLabel.Text = this.game.animatedObjects.Count.ToString(ci) + " animated objects loaded.";
+            this.AnimatedObjectListBox.SelectedIndex = 0;
         }
 
         private void tsmiReload_Click(object sender, EventArgs e)
@@ -2295,8 +2517,21 @@
                 this.label32.Size = new Size(0x58, 13);
                 this.tabPage3.Location = new System.Drawing.Point(4, 0x16);
                 this.tabPage3.Size = new Size(0x103, 0x181);
+                this.StaticObjectListBox.Location = new System.Drawing.Point(6, 0x16);
+                this.StaticObjectListBox.Size = new Size(0xe4, 0x10a);
+                this.StaticObjectStatusLabel.Location = new System.Drawing.Point(6, 0x125);
+                this.StaticObjectStatusLabel.Size = new Size(0xe4, 0x55);
                 this.tabPage4.Location = new System.Drawing.Point(4, 0x16);
                 this.tabPage4.Size = new Size(0x103, 0x181);
+                this.AnimatedObjectListBox.Location = new System.Drawing.Point(6, 0x16);
+                this.AnimatedObjectListBox.Size = new Size(0xe4, 0xc0);
+                this.AnimatedObjectAnimationComboBox.Location = new System.Drawing.Point(9, 0xe9);
+                this.AnimatedObjectAnimationComboBox.Size = new Size(0xe1, 0x15);
+                this.AnimatedObjectLoopCheckBox.Location = new System.Drawing.Point(9, 260);
+                this.AnimatedObjectRunButton.Location = new System.Drawing.Point(9, 0x119);
+                this.AnimatedObjectRunButton.Size = new Size(0x63, 0x17);
+                this.AnimatedObjectStatusLabel.Location = new System.Drawing.Point(6, 0x138);
+                this.AnimatedObjectStatusLabel.Size = new Size(0xe4, 0x40);
                 this.tabPage1.Location = new System.Drawing.Point(4, 0x16);
                 this.tabPage1.Size = new Size(0x103, 0x181);
                 this.DebugButton2.Location = new System.Drawing.Point(0xb0, 0xf6);
@@ -2309,39 +2544,39 @@
                 this.BrickplaceStopButton.Size = new Size(0x4b, 0x24);
                 this.Brickplacelabel.Location = new System.Drawing.Point(880, 160);
                 this.Brickplacelabel.Size = new Size(0x81, 13);
-                this.label14.Location = new System.Drawing.Point(0, 2);
+                this.label14.Location = new System.Drawing.Point(0, 0);
                 this.label14.Size = new Size(0x30, 13);
-                this.label15.Location = new System.Drawing.Point(0, 0x15);
+                this.label15.Location = new System.Drawing.Point(0, 0x0B);
                 this.label15.Size = new Size(0x7b, 13);
-                this.label16.Location = new System.Drawing.Point(0, 0x22);
+                this.label16.Location = new System.Drawing.Point(0, 0x23);
                 this.label16.Size = new Size(0x9e, 13);
-                this.label17.Location = new System.Drawing.Point(0, 0x2f);
+                this.label17.Location = new System.Drawing.Point(0, 0x3B);
                 this.label17.Size = new Size(0xaf, 13);
-                this.label19.Location = new System.Drawing.Point(0xa2, 0x15);
+                this.label19.Location = new System.Drawing.Point(0, 0x17);
                 this.label19.Size = new Size(0x66, 13);
-                this.label20.Location = new System.Drawing.Point(0xa9, 0x22);
+                this.label20.Location = new System.Drawing.Point(0, 0x2F);
                 this.label20.Size = new Size(0x5f, 13);
-                this.label21.Location = new System.Drawing.Point(0, 60);
+                this.label21.Location = new System.Drawing.Point(0, 0x47);
                 this.label21.Size = new Size(0xa7, 13);
-                this.label22.Location = new System.Drawing.Point(0xa8, 0x56);
+                this.label22.Location = new System.Drawing.Point(0, 0x6B);
                 this.label22.Size = new Size(0x60, 13);
-                this.label23.Location = new System.Drawing.Point(0, 0x49);
+                this.label23.Location = new System.Drawing.Point(0, 0x53);
                 this.label23.Size = new Size(0x7a, 13);
-                this.label24.Location = new System.Drawing.Point(0, 0x56);
+                this.label24.Location = new System.Drawing.Point(0, 0x5F);
                 this.label24.Size = new Size(140, 13);
-                this.label25.Location = new System.Drawing.Point(0, 0x63);
+                this.label25.Location = new System.Drawing.Point(0, 0x77);
                 this.label25.Size = new Size(0x66, 13);
-                this.label26.Location = new System.Drawing.Point(0x9d, 0x63);
+                this.label26.Location = new System.Drawing.Point(0, 0x83);
                 this.label26.Size = new Size(0x6b, 13);
-                this.panel1.Location = new System.Drawing.Point(0x331, 0x1ed);
-                this.panel1.Size = new Size(0x10b, 0x75);
-                this.label27.Location = new System.Drawing.Point(0x331, 0x1c8);
+                this.panel1.Location = new System.Drawing.Point(0x331, 0x1D2);
+                this.panel1.Size = new Size(0x10b, 0x90);
+                this.label27.Location = new System.Drawing.Point(0x331, 0x1B7);
                 this.label27.Size = new Size(0x42, 13);
-                this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1c8);
+                this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1B7);
                 this.CameraPositionLabel.Size = new Size(0x2d, 13);
-                this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x331, 0x1d9);
+                this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x331, 0x1C4);
                 this.CameraSpeedHeaderLabel.Size = new Size(0x42, 13);
-                this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1d9);
+                this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1C4);
                 this.CameraSpeedLabel.Size = new Size(0x2d, 13);
             }
             else if (this.currentDPI == 120f)
@@ -2506,8 +2741,21 @@
                 this.label32.Size = new Size(0x73, 0x11);
                 this.tabPage3.Location = new System.Drawing.Point(4, 0x19);
                 this.tabPage3.Size = new Size(0x133, 390);
+                this.StaticObjectListBox.Location = new System.Drawing.Point(6, 0x16);
+                this.StaticObjectListBox.Size = new Size(0x110, 0x120);
+                this.StaticObjectStatusLabel.Location = new System.Drawing.Point(6, 0x13d);
+                this.StaticObjectStatusLabel.Size = new Size(0x110, 0x40);
                 this.tabPage4.Location = new System.Drawing.Point(4, 0x19);
                 this.tabPage4.Size = new Size(0x133, 390);
+                this.AnimatedObjectListBox.Location = new System.Drawing.Point(6, 0x16);
+                this.AnimatedObjectListBox.Size = new Size(0x110, 0xc6);
+                this.AnimatedObjectAnimationComboBox.Location = new System.Drawing.Point(9, 0xea);
+                this.AnimatedObjectAnimationComboBox.Size = new Size(0x10d, 0x18);
+                this.AnimatedObjectLoopCheckBox.Location = new System.Drawing.Point(9, 0x107);
+                this.AnimatedObjectRunButton.Location = new System.Drawing.Point(9, 0x123);
+                this.AnimatedObjectRunButton.Size = new Size(0x76, 0x19);
+                this.AnimatedObjectStatusLabel.Location = new System.Drawing.Point(6, 0x142);
+                this.AnimatedObjectStatusLabel.Size = new Size(0x110, 0x3b);
                 this.tabPage1.Location = new System.Drawing.Point(4, 0x19);
                 this.tabPage1.Size = new Size(0x133, 390);
                 this.DebugButton2.Location = new System.Drawing.Point(0xb0, 0xf6);
@@ -2516,39 +2764,39 @@
                 this.DebugButton1.Size = new Size(0x4b, 0x17);
                 this.DebugListView.Location = new System.Drawing.Point(15, 12);
                 this.DebugListView.Size = new Size(0xec, 0xe4);
-                this.label14.Location = new System.Drawing.Point(1, -4);
+                this.label14.Location = new System.Drawing.Point(0, 0);
                 this.label14.Size = new Size(0x40, 0x11);
-                this.label15.Location = new System.Drawing.Point(-3, 11);
+                this.label15.Location = new System.Drawing.Point(0, 0x0E);
                 this.label15.Size = new Size(0x9f, 0x11);
-                this.label16.Location = new System.Drawing.Point(-3, 0x1c);
+                this.label16.Location = new System.Drawing.Point(0, 0x2A);
                 this.label16.Size = new Size(210, 0x11);
-                this.label17.Location = new System.Drawing.Point(-3, 0x2d);
+                this.label17.Location = new System.Drawing.Point(0, 0x46);
                 this.label17.Size = new Size(0xec, 0x11);
-                this.label19.Location = new System.Drawing.Point(0xb6, 11);
+                this.label19.Location = new System.Drawing.Point(0, 0x1C);
                 this.label19.Size = new Size(0x85, 0x11);
-                this.label20.Location = new System.Drawing.Point(190, 0x4f);
+                this.label20.Location = new System.Drawing.Point(0, 0x38);
                 this.label20.Size = new Size(0x7d, 0x11);
-                this.label21.Location = new System.Drawing.Point(-3, 0x3e);
+                this.label21.Location = new System.Drawing.Point(0, 0x54);
                 this.label21.Size = new Size(0xde, 0x11);
-                this.label22.Location = new System.Drawing.Point(0xbb, 0x60);
+                this.label22.Location = new System.Drawing.Point(0, 0x7E);
                 this.label22.Size = new Size(0x80, 0x11);
-                this.label23.Location = new System.Drawing.Point(-3, 0x4f);
+                this.label23.Location = new System.Drawing.Point(0, 0x62);
                 this.label23.Size = new Size(0xa1, 0x11);
-                this.label24.Location = new System.Drawing.Point(-3, 0x60);
+                this.label24.Location = new System.Drawing.Point(0, 0x70);
                 this.label24.Size = new Size(0xbc, 0x11);
-                this.label25.Location = new System.Drawing.Point(-2, 0x71);
+                this.label25.Location = new System.Drawing.Point(0, 0x8C);
                 this.label25.Size = new Size(0x89, 0x11);
-                this.label26.Location = new System.Drawing.Point(0xac, 0x71);
+                this.label26.Location = new System.Drawing.Point(0, 0x9A);
                 this.label26.Size = new Size(0x8f, 0x11);
-                this.panel1.Location = new System.Drawing.Point(0x32e, 0x1e1);
-                this.panel1.Size = new Size(0x137, 0x84);
-                this.label27.Location = new System.Drawing.Point(0x32e, 0x1b8);
+                this.panel1.Location = new System.Drawing.Point(0x32e, 0x1C0);
+                this.panel1.Size = new Size(0x137, 0xA5);
+                this.label27.Location = new System.Drawing.Point(0x32e, 0x19E);
                 this.label27.Size = new Size(0x58, 0x11);
-                this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x1b8);
+                this.CameraPositionLabel.Location = new System.Drawing.Point(0x38a, 0x19E);
                 this.CameraPositionLabel.Size = new Size(0x3a, 0x11);
-                this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x32e, 0x1c9);
+                this.CameraSpeedHeaderLabel.Location = new System.Drawing.Point(0x32e, 0x1AF);
                 this.CameraSpeedHeaderLabel.Size = new Size(0x58, 0x11);
-                this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1c9);
+                this.CameraSpeedLabel.Location = new System.Drawing.Point(0x38a, 0x1AF);
                 this.CameraSpeedLabel.Size = new Size(0x3a, 0x11);
             }
         }
@@ -2652,6 +2900,7 @@
             this.game.editmode = this.tabControl1.SelectedIndex;
             this.game.placing = false;
             this.DeselectBricks();
+            this.game.ClearViewerSelection();
         }
 
         private void tsmiUnloadAll_Click(object sender, EventArgs e)

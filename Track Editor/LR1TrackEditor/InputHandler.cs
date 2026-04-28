@@ -99,8 +99,22 @@
             {
                 plane = new Plane(vector, vector2, vector + new Vector3(1f, 0f, 0f));
             }
-            LRVector3 input = !game.SelectedBricksColored[num] ? game.pwb.WhiteBricks[game.SelectedBrickIndices[num]].Position : game.pwb.ColorBricks[game.SelectedBrickIndices[num]].Position;
-            Vector3 vector6 = input.toXNAVector();
+            Vector3 vector6;
+            LRVector3 input = new LRVector3();
+            if ((game.editmode == 1) && (num >= 0))
+            {
+                input = !game.SelectedBricksColored[num] ? game.pwb.WhiteBricks[game.SelectedBrickIndices[num]].Position : game.pwb.ColorBricks[game.SelectedBrickIndices[num]].Position;
+                vector6 = input.toXNAVector();
+            }
+            else
+            {
+                Vector3? selectedPosition = game.GetSelectedViewerPosition();
+                if (selectedPosition == null)
+                {
+                    return;
+                }
+                vector6 = selectedPosition.Value;
+            }
             float num2 = MathHelper.Min((vector6 - vector3).Length(), 250f) * 0.2f;
             if (dragaxis == 1)
             {
@@ -126,35 +140,44 @@
             }
             if (!flag1)
             {
-                int num3 = 0;
-                while (true)
+                if ((game.editmode == 1) && (game.SelectedBrickIndices.Count > 0))
                 {
-                    if (num3 >= game.SelectedBrickIndices.Count)
+                    int num3 = 0;
+                    while (true)
                     {
-                        break;
+                        if (num3 >= game.SelectedBrickIndices.Count)
+                        {
+                            break;
+                        }
+                        input = !game.SelectedBricksColored[num3] ? game.pwb.WhiteBricks[game.SelectedBrickIndices[num3]].Position : game.pwb.ColorBricks[game.SelectedBrickIndices[num3]].Position;
+                        if (dragaxis == 1)
+                        {
+                            input.X += nullable.Value;
+                        }
+                        else if (dragaxis == 2)
+                        {
+                            input.Y += nullable.Value;
+                        }
+                        else if (dragaxis == 3)
+                        {
+                            input.Z += nullable.Value;
+                        }
+                        if (game.SelectedBricksColored[num3])
+                        {
+                            game.pwb.ColorBricks[game.SelectedBrickIndices[num3]].Position = input;
+                        }
+                        else
+                        {
+                            game.pwb.WhiteBricks[game.SelectedBrickIndices[num3]].Position = input;
+                        }
+                        num3++;
                     }
-                    input = !game.SelectedBricksColored[num3] ? game.pwb.WhiteBricks[game.SelectedBrickIndices[num3]].Position : game.pwb.ColorBricks[game.SelectedBrickIndices[num3]].Position;
-                    if (dragaxis == 1)
-                    {
-                        input.X += nullable.Value;
-                    }
-                    else if (dragaxis == 2)
-                    {
-                        input.Y += nullable.Value;
-                    }
-                    else if (dragaxis == 3)
-                    {
-                        input.Z += nullable.Value;
-                    }
-                    if (game.SelectedBricksColored[num3])
-                    {
-                        game.pwb.ColorBricks[game.SelectedBrickIndices[num3]].Position = input;
-                    }
-                    else
-                    {
-                        game.pwb.WhiteBricks[game.SelectedBrickIndices[num3]].Position = input;
-                    }
-                    num3++;
+                    form.MarkPwbEdited();
+                    form.RefreshSelectedBrickFields();
+                }
+                else
+                {
+                    game.ApplyViewerDragDelta(dragaxis, nullable.Value);
                 }
             }
         }
@@ -268,7 +291,7 @@
                             {
                                 dragging = true;
                             }
-                            if (dragging && ((game.editmode == 1) && (game.SelectedBrickIndices.Count > 0)))
+                            if (dragging && game.HasDraggableSelection())
                             {
                                 Drag(game, (float)state2.X, (float)state2.Y);
                             }
