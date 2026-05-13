@@ -21,8 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="LibLR1">
-      <HintPath>..\LibLR1.dll</HintPath>
-    </Reference>
+    <ProjectReference Include="..\LibLR1\LibLR1.csproj" />
   </ItemGroup>
 </Project>

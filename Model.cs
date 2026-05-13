@@ -44,14 +44,13 @@
             this.Draw(game, basicEffect, transform, mat, null);
         }
 
-        public void Draw(GameView game, BasicEffect basicEffect, Matrix transform, Material mat, Dictionary<string, Material> materialOverrides)
+        public void Draw(GameView game, BasicEffect basicEffect, Matrix transform, Material mat, Dictionary<string, Material> materialOverrides, Dictionary<ushort, Matrix> boneTransforms = null)
         {
             if (this.vertexbuffer == null || this.indexbuffer == null || this.parts.Count == 0)
             {
                 return;
             }
 
-            basicEffect.World = Matrix.CreateScale(this.scale) * transform;
             basicEffect.VertexColorEnabled = !this.normals && game.doVertexColors;
             game.GraphicsDevice.Indices = this.indexbuffer;
             game.GraphicsDevice.SetVertexBuffer(this.vertexbuffer);
@@ -67,6 +66,15 @@
                     ModelPart current = enumerator.Current;
                     if (current.visible)
                     {
+                        Matrix partTransform = transform;
+                        if (boneTransforms != null &&
+                            current.boneid != ushort.MaxValue &&
+                            boneTransforms.TryGetValue(current.boneid, out Matrix boneTransform))
+                        {
+                            partTransform = boneTransform;
+                        }
+
+                        basicEffect.World = Matrix.CreateScale(this.scale) * partTransform;
                         if (mat is object)
                         {
                             if ((mat.texture == null) || !game.doTextures)

@@ -7,5 +7,6 @@ namespace LR1TrackEditor
         public LR1TrackEditor.Model Model { get; set; }
         public Matrix Transform { get; set; } = Matrix.Identity;
         public string SourcePath { get; set; } = string.Empty;
+        public bool IsCheckpointTrigger { get; set; }
     }
 }

@@ -8,6 +8,7 @@
     using System;
     using System.Collections.Generic;
     using System.Drawing;
+    using System.Globalization;
     using System.IO;
     using System.Linq;
     using System.Runtime.InteropServices;
@@ -69,11 +70,16 @@
         public SPB spb = null;
         public CPB cpb = null;
         public HZB hzb = null;
+        public EVB evb = null;
         public List<EMB> embs = new List<EMB>();
+        public List<LoadedEmitterDefinition> emitterDefinitions = new List<LoadedEmitterDefinition>();
         public List<CollisionModelInstance> collisionModels = new List<CollisionModelInstance>();
         public List<WDB> extraWdbScenes = new List<WDB>();
         public Dictionary<WDB, string> scenePaths = new Dictionary<WDB, string>();
         public Dictionary<WDB, List<LoadedMabDefinition>> sceneMabs = new Dictionary<WDB, List<LoadedMabDefinition>>();
+        public Dictionary<WDB, List<LoadedAdbDefinition>> sceneAdbs = new Dictionary<WDB, List<LoadedAdbDefinition>>();
+        public Dictionary<WDB, List<LoadedSdbDefinition>> sceneSdbs = new Dictionary<WDB, List<LoadedSdbDefinition>>();
+        private readonly HashSet<string> animationDiagnosticKeys = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
         public List<AnimatedObjectEntry> animatedObjects = new List<AnimatedObjectEntry>();
         public Dictionary<string, AnimatedObjectPlayback> animatedObjectPlaybacks = new Dictionary<string, AnimatedObjectPlayback>(StringComparer.InvariantCultureIgnoreCase);
         public List<RRBFile> rrbs = new List<RRBFile>();
@@ -97,6 +103,7 @@
         public ViewerSelectionType selectedViewerObject = ViewerSelectionType.None;
         public int selectedStartPositionKey = -1;
         public int selectedCheckpointIndex = -1;
+        private float totalElapsedSeconds = 0f;
 
         public GameView()
         {
@@ -290,6 +297,12 @@
                     diffusecolor = new Microsoft.Xna.Framework.Color(255, 160, 64),
                     alpha = 255
                 };
+                Material checkpointCollisionMaterial = new Material
+                {
+                    ambientcolor = new Microsoft.Xna.Framework.Color(64, 224, 255),
+                    diffusecolor = new Microsoft.Xna.Framework.Color(64, 224, 255),
+                    alpha = 255
+                };
                 RasterizerState collisionRasterizerState = new RasterizerState
                 {
                     CullMode = CullMode.None,
@@ -299,7 +312,10 @@
                 base.GraphicsDevice.DepthStencilState = DepthStencilState.None;
                 foreach (CollisionModelInstance collisionModel in this.collisionModels)
                 {
-                    collisionModel.Model?.Draw(this, this.basicEffect, collisionModel.Transform, collisionMaterial);
+                    Material resolvedCollisionMaterial = collisionModel?.IsCheckpointTrigger == true
+                        ? checkpointCollisionMaterial
+                        : collisionMaterial;
+                    collisionModel.Model?.Draw(this, this.basicEffect, collisionModel.Transform, resolvedCollisionMaterial);
                 }
                 base.GraphicsDevice.DepthStencilState = previousDepthStencilState;
                 base.GraphicsDevice.RasterizerState = previousRasterizerState;
@@ -415,21 +431,28 @@
                 DrawPositionMarkers(positions, new Microsoft.Xna.Framework.Color(255, 50, 50), 6f);
             }
 
-            // Draw EMB emitter positions
+            // Draw EMB emitter positions and textured billboards when supported.
             if (this.embs.Count > 0 && this.doDrawEMB)
             {
                 List<Vector3> positions = new List<Vector3>();
-                foreach (EMB emb in this.embs)
+                foreach (LoadedEmitterDefinition emitterDefinition in this.emitterDefinitions)
                 {
-                    if (emb.Emitters == null) continue;
-                    foreach (var kvp in emb.Emitters)
+                    if (emitterDefinition?.Source?.Emitters == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var kvp in emitterDefinition.Source.Emitters)
                     {
                         EMB_Emitter em = kvp.Value;
-                        if (em.Positions != null)
+                        Vector3 anchorPosition = this.GetEmitterAnchorPosition(kvp.Key);
+                        if (em?.Positions != null)
                         {
                             foreach (LRVector3 pos2 in em.Positions)
                             {
-                                positions.Add(new Vector3(pos2.X, pos2.Y, pos2.Z));
+                                Vector3 worldPosition = anchorPosition + new Vector3(pos2.X, pos2.Y, pos2.Z);
+                                positions.Add(worldPosition);
+                                this.DrawEmitterBillboard(worldPosition, em, emitterDefinition);
                             }
                         }
                     }
@@ -472,6 +495,162 @@
                 pass.Apply();
                 base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.LineList, lines.ToArray(), 0, lines.Count / 2, VertexPTC.VertexDeclaration);
             }
+        }
+
+        private Vector3 GetEmitterAnchorPosition(string emitterName)
+        {
+            if (string.IsNullOrWhiteSpace(emitterName) || this.evb?.Models == null)
+            {
+                return Vector3.Zero;
+            }
+
+            foreach (KeyValuePair<int, EVB_Model> modelEntry in this.evb.Models)
+            {
+                EVB_Model model = modelEntry.Value;
+                if (model == null ||
+                    !model.HasPosition ||
+                    !string.Equals(model.Name, emitterName, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    continue;
+                }
+
+                return model.Position.toXNAVector();
+            }
+
+            return Vector3.Zero;
+        }
+
+        private void DrawEmitterBillboard(Vector3 center, EMB_Emitter emitter, LoadedEmitterDefinition emitterDefinition)
+        {
+            Material material = this.ResolveEmitterMaterial(emitter, emitterDefinition);
+            if (material?.texture == null)
+            {
+                return;
+            }
+
+            float size = Math.Max(emitter?.Size ?? 0f, 1f);
+            Vector3 worldUp = new Vector3(0f, 0f, 1f);
+            Vector3 toCamera = this.cameraPosition - center;
+            if (toCamera.LengthSquared() <= 0.0001f)
+            {
+                return;
+            }
+
+            toCamera.Normalize();
+            Vector3 right = Vector3.Cross(worldUp, toCamera);
+            if (right.LengthSquared() <= 0.0001f)
+            {
+                right = Vector3.Right;
+            }
+            else
+            {
+                right.Normalize();
+            }
+
+            Vector3 up = Vector3.Cross(toCamera, right);
+            if (up.LengthSquared() <= 0.0001f)
+            {
+                up = worldUp;
+            }
+            else
+            {
+                up.Normalize();
+            }
+
+            float halfWidth = size * 0.5f;
+            float halfHeight = size * 0.5f;
+            Vector3 topLeft = center - (right * halfWidth) + (up * halfHeight);
+            Vector3 topRight = center + (right * halfWidth) + (up * halfHeight);
+            Vector3 bottomLeft = center - (right * halfWidth) - (up * halfHeight);
+            Vector3 bottomRight = center + (right * halfWidth) - (up * halfHeight);
+            Microsoft.Xna.Framework.Color tint = material.diffusecolor == default ? Microsoft.Xna.Framework.Color.White : material.diffusecolor;
+            VertexPTC[] vertices = new VertexPTC[]
+            {
+                new VertexPTC(topLeft, new Vector2(0f, 0f), tint),
+                new VertexPTC(bottomLeft, new Vector2(0f, 1f), tint),
+                new VertexPTC(topRight, new Vector2(1f, 0f), tint),
+                new VertexPTC(topRight, new Vector2(1f, 0f), tint),
+                new VertexPTC(bottomLeft, new Vector2(0f, 1f), tint),
+                new VertexPTC(bottomRight, new Vector2(1f, 1f), tint)
+            };
+
+            this.basicEffect.World = Matrix.Identity;
+            this.basicEffect.TextureEnabled = this.doTextures;
+            this.basicEffect.Texture = material.texture;
+            this.basicEffect.VertexColorEnabled = true;
+            this.basicEffect.Alpha = ((float)material.alpha) / 255f;
+            this.basicEffect.AmbientLightColor = Utils.vectorfromcolor(material.ambientcolor);
+            this.basicEffect.DiffuseColor = Vector3.One;
+            foreach (EffectPass pass in this.basicEffect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                base.GraphicsDevice.DrawUserPrimitives<VertexPTC>(PrimitiveType.TriangleList, vertices, 0, 2, VertexPTC.VertexDeclaration);
+            }
+        }
+
+        private Material ResolveEmitterMaterial(EMB_Emitter emitter, LoadedEmitterDefinition emitterDefinition)
+        {
+            if (emitterDefinition == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(emitter?.Texture))
+            {
+                if (emitterDefinition.Materials.TryGetValue(emitter.Texture, out Material explicitMaterial))
+                {
+                    return explicitMaterial;
+                }
+
+                foreach (Material candidate in emitterDefinition.Materials.Values)
+                {
+                    if (string.Equals(candidate.textureName, emitter.Texture, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            if (emitterDefinition.MaterialAnimations.Count == 1)
+            {
+                MabAnimationDefinition animation = emitterDefinition.MaterialAnimations[0].Animations.FirstOrDefault();
+                if (animation != null && animation.SequenceFrames.Count > 0)
+                {
+                    int frameIndex = (int)(this.totalElapsedSeconds * Math.Max(animation.Speed, 1));
+                    foreach (MabFrameDefinition frame in animation.GetPlaybackFrame(frameIndex))
+                    {
+                        if (string.IsNullOrWhiteSpace(frame.MaterialName))
+                        {
+                            continue;
+                        }
+
+                        if (emitterDefinition.Materials.TryGetValue(frame.MaterialName, out Material animatedMaterial))
+                        {
+                            return animatedMaterial;
+                        }
+
+                        foreach (Material candidate in emitterDefinition.Materials.Values)
+                        {
+                            if (string.Equals(candidate.textureName, frame.MaterialName, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                return candidate;
+                            }
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(emitter?.Texture) &&
+                            emitterDefinition.Materials.TryGetValue(emitter.Texture, out Material baseAnimatedMaterial))
+                        {
+                            Material resolvedFrameMaterial = Loader.ResolveAnimatedMaterialFrame(baseAnimatedMaterial, base.GraphicsDevice, frame.FrameIndex);
+                            if (resolvedFrameMaterial != null)
+                            {
+                                return resolvedFrameMaterial;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return null;
         }
 
         private void DrawMoveArrows(Vector3 pos)
@@ -762,12 +941,14 @@
             this.basicEffect.Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(LR1TrackEditor.Settings.Default.FoV), aspectRatio, nearPlane, farPlane);
         }
 
-        public void RegisterSceneResources(WDB scene, string scenePath, List<LoadedMabDefinition> loadedMabs, bool clearExisting)
+        public void RegisterSceneResources(WDB scene, string scenePath, List<LoadedMabDefinition> loadedMabs, List<LoadedAdbDefinition> loadedAdbs, List<LoadedSdbDefinition> loadedSdbs, bool clearExisting)
         {
             if (clearExisting)
             {
                 this.scenePaths.Clear();
                 this.sceneMabs.Clear();
+                this.sceneAdbs.Clear();
+                this.sceneSdbs.Clear();
                 this.animatedObjects.Clear();
                 this.animatedObjectPlaybacks.Clear();
             }
@@ -779,6 +960,8 @@
 
             this.scenePaths[scene] = scenePath ?? string.Empty;
             this.sceneMabs[scene] = loadedMabs ?? new List<LoadedMabDefinition>();
+            this.sceneAdbs[scene] = loadedAdbs ?? new List<LoadedAdbDefinition>();
+            this.sceneSdbs[scene] = loadedSdbs ?? new List<LoadedSdbDefinition>();
         }
 
         public void ClearViewerSelection()
@@ -919,6 +1102,44 @@
             return matches;
         }
 
+        private LoadedAdbDefinition GetLoadedAdb(List<LoadedAdbDefinition> loadedAdbs, int? adbIndex)
+        {
+            if (!adbIndex.HasValue || loadedAdbs == null)
+            {
+                return null;
+            }
+
+            int index = adbIndex.Value;
+            return index >= 0 && index < loadedAdbs.Count ? loadedAdbs[index] : null;
+        }
+
+        private LoadedSdbDefinition GetLoadedSdb(List<LoadedSdbDefinition> loadedSdbs, int? sdbIndex)
+        {
+            if (!sdbIndex.HasValue || loadedSdbs == null)
+            {
+                return null;
+            }
+
+            int index = sdbIndex.Value;
+            return index >= 0 && index < loadedSdbs.Count ? loadedSdbs[index] : null;
+        }
+
+        public int GetAnimatedSceneModelCount()
+        {
+            int count = 0;
+            if (this.wdb?.AnimatedModels != null)
+            {
+                count += this.wdb.AnimatedModels.Count;
+            }
+
+            foreach (WDB scene in this.extraWdbScenes.Where(scene => scene?.AnimatedModels != null))
+            {
+                count += scene.AnimatedModels.Count;
+            }
+
+            return count;
+        }
+
         public void RebuildAnimatedObjects()
         {
             this.animatedObjects.Clear();
@@ -934,12 +1155,10 @@
                 string scenePath = this.GetScenePath(scene);
                 string sceneName = this.GetSceneName(scene);
                 List<LoadedMabDefinition> loadedMabs = this.sceneMabs.ContainsKey(scene) ? this.sceneMabs[scene] : new List<LoadedMabDefinition>();
-                if (loadedMabs.Count == 0)
-                {
-                    continue;
-                }
+                List<LoadedAdbDefinition> loadedAdbs = this.sceneAdbs.ContainsKey(scene) ? this.sceneAdbs[scene] : new List<LoadedAdbDefinition>();
+                List<LoadedSdbDefinition> loadedSdbs = this.sceneSdbs.ContainsKey(scene) ? this.sceneSdbs[scene] : new List<LoadedSdbDefinition>();
 
-                void AddEntry(string objectName, string modelName, Matrix worldMatrix, AnimatedObjectType objectType)
+                void AddEntry(string objectName, string modelName, Matrix worldMatrix, AnimatedObjectType objectType, int? adbIndex = null, int? sdbIndex = null)
                 {
                     if (string.IsNullOrWhiteSpace(objectName) || string.IsNullOrWhiteSpace(modelName) || !this.models.ContainsKey(modelName))
                     {
@@ -948,10 +1167,8 @@
 
                     List<string> materialNames = this.GetModelMaterialNames(modelName);
                     List<MabAnimationDefinition> matchingAnimations = this.GetAnimationsForMaterials(loadedMabs, materialNames);
-                    if (matchingAnimations.Count == 0)
-                    {
-                        return;
-                    }
+                    LoadedAdbDefinition linkedAdb = this.GetLoadedAdb(loadedAdbs, adbIndex);
+                    LoadedSdbDefinition linkedSdb = this.GetLoadedSdb(loadedSdbs, sdbIndex);
 
                     AnimatedObjectEntry entry = new AnimatedObjectEntry
                     {
@@ -963,7 +1180,11 @@
                         SceneKey = scenePath ?? sceneName,
                         ObjectType = objectType,
                         WorldMatrix = worldMatrix,
-                        Scene = scene
+                        Scene = scene,
+                        AdbIndex = adbIndex,
+                        SdbIndex = sdbIndex,
+                        AdbDefinition = linkedAdb,
+                        SdbDefinition = linkedSdb
                     };
 
                     foreach (string materialName in materialNames)
@@ -974,6 +1195,32 @@
                     foreach (MabAnimationDefinition animation in matchingAnimations)
                     {
                         entry.Animations.Add(animation);
+                        entry.AvailableAnimations.Add(new AnimatedObjectAnimationOption
+                        {
+                            Id = entry.Id + "::mat::" + animation.Id,
+                            DisplayName = "Material: " + animation.DisplayName,
+                            Kind = AnimatedObjectAnimationKind.Material,
+                            MaterialAnimation = animation
+                        });
+                    }
+
+                    if (linkedAdb?.Animations != null)
+                    {
+                        foreach (AdbAnimationDefinition animation in linkedAdb.Animations)
+                        {
+                            entry.AvailableAnimations.Add(new AnimatedObjectAnimationOption
+                            {
+                                Id = entry.Id + "::adb::" + animation.Id,
+                                DisplayName = "Transform: " + animation.DisplayName,
+                                Kind = AnimatedObjectAnimationKind.Transform,
+                                TransformAnimation = animation
+                            });
+                        }
+                    }
+
+                    if (entry.AvailableAnimations.Count == 0)
+                    {
+                        return;
                     }
 
                     this.animatedObjects.Add(entry);
@@ -1036,7 +1283,9 @@
                         current.Key,
                         scene.GDBs[gdbIndex],
                         CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
-                        AnimatedObjectType.AnimatedModel);
+                        AnimatedObjectType.AnimatedModel,
+                        current.Value.ModelRef.IndexADB,
+                        current.Value.ModelRef.IndexSDB);
                 }
             }
 
@@ -1047,9 +1296,9 @@
             }
         }
 
-        public void PlayAnimatedObject(AnimatedObjectEntry entry, MabAnimationDefinition animation, bool loop)
+        public void PlayAnimatedObject(AnimatedObjectEntry entry, AnimatedObjectAnimationOption animationOption, bool loop)
         {
-            if (entry == null || animation == null)
+            if (entry == null || animationOption == null)
             {
                 return;
             }
@@ -1057,7 +1306,7 @@
             this.animatedObjectPlaybacks[entry.Id] = new AnimatedObjectPlayback
             {
                 Entry = entry,
-                Animation = animation,
+                AnimationOption = animationOption,
                 Loop = loop,
                 ElapsedSeconds = 0f
             };
@@ -1065,19 +1314,20 @@
 
         private int GetAnimationSequenceStep(AnimatedObjectPlayback playback)
         {
-            if (playback?.Animation == null || playback.Animation.SequenceFrames.Count == 0)
+            MabAnimationDefinition animation = playback?.MaterialAnimation;
+            if (animation == null || animation.SequenceFrames.Count == 0)
             {
                 return 0;
             }
 
-            int logicalFrameCount = Math.Max(playback.Animation.LogicalFrameCount, 1);
+            int logicalFrameCount = Math.Max(animation.LogicalFrameCount, 1);
             int currentFrame = playback.GetCurrentFrameIndex();
-            if (logicalFrameCount <= 1 || playback.Animation.SequenceFrames.Count == 1)
+            if (logicalFrameCount <= 1 || animation.SequenceFrames.Count == 1)
             {
                 return 0;
             }
 
-            return Math.Min((currentFrame * playback.Animation.SequenceFrames.Count) / logicalFrameCount, playback.Animation.SequenceFrames.Count - 1);
+            return Math.Min((currentFrame * animation.SequenceFrames.Count) / logicalFrameCount, animation.SequenceFrames.Count - 1);
         }
 
         private Material ResolveAnimatedOverrideMaterial(string baseMaterialName, MabFrameDefinition frame)
@@ -1117,21 +1367,27 @@
                 return null;
             }
 
+            MabAnimationDefinition animation = playback.MaterialAnimation;
+            if (animation == null)
+            {
+                return null;
+            }
+
             List<string> animatedMaterials = entry.MaterialNames
-                .Where(name => !string.IsNullOrWhiteSpace(name) && playback.Animation.ReferencedMaterials.Contains(name))
+                .Where(name => !string.IsNullOrWhiteSpace(name) && animation.ReferencedMaterials.Contains(name))
                 .Distinct(StringComparer.InvariantCultureIgnoreCase)
                 .ToList();
 
             if (animatedMaterials.Count == 0)
             {
-                animatedMaterials = playback.Animation.SequenceFrames
+                animatedMaterials = animation.SequenceFrames
                     .Select(frame => frame.MaterialName)
                     .Where(name => !string.IsNullOrWhiteSpace(name))
                     .Distinct(StringComparer.InvariantCultureIgnoreCase)
                     .ToList();
             }
 
-            if (animatedMaterials.Count == 0 || playback.Animation.SequenceFrames.Count == 0)
+            if (animatedMaterials.Count == 0 || animation.SequenceFrames.Count == 0)
             {
                 return null;
             }
@@ -1140,7 +1396,7 @@
             int animationStep = this.GetAnimationSequenceStep(playback);
             for (int materialIndex = 0; materialIndex < animatedMaterials.Count; materialIndex++)
             {
-                MabFrameDefinition frame = playback.Animation.SequenceFrames[(animationStep + materialIndex) % playback.Animation.SequenceFrames.Count];
+                MabFrameDefinition frame = animation.SequenceFrames[(animationStep + materialIndex) % animation.SequenceFrames.Count];
                 string baseMaterialName = animatedMaterials[materialIndex];
                 Material resolvedMaterial = this.ResolveAnimatedOverrideMaterial(baseMaterialName, frame);
                 if (resolvedMaterial == null)
@@ -1152,6 +1408,466 @@
             }
 
             return overrides.Count == 0 ? null : overrides;
+        }
+
+        private static Quaternion ToXnaAnimationQuaternion(LRQuaternion rotation)
+        {
+            if (rotation == null)
+            {
+                return Quaternion.Identity;
+            }
+
+            Quaternion quaternion = new Quaternion(rotation.X, rotation.Y, rotation.Z, rotation.W);
+            if (quaternion.LengthSquared() <= 0f)
+            {
+                return Quaternion.Identity;
+            }
+
+            // LR1 quaternion winding is inverted relative to the XNA transform usage here.
+            return Quaternion.Conjugate(Quaternion.Normalize(quaternion));
+        }
+
+        private static Quaternion ToXnaBindQuaternion(LRQuaternion rotation)
+        {
+            if (rotation == null)
+            {
+                return Quaternion.Identity;
+            }
+
+            Quaternion quaternion = new Quaternion(rotation.X, rotation.Y, rotation.Z, rotation.W);
+            return quaternion.LengthSquared() <= 0f ? Quaternion.Identity : Quaternion.Normalize(quaternion);
+        }
+
+        private static float NormalizeAnimationFrameTime(float frameTime, int logicalFrameCount)
+        {
+            int frameCount = Math.Max(logicalFrameCount, 1);
+            if (frameCount <= 1)
+            {
+                return 0f;
+            }
+
+            float normalized = frameTime % frameCount;
+            if (normalized < 0f)
+            {
+                normalized += frameCount;
+            }
+
+            return normalized;
+        }
+
+        private static bool TryGetAdbSampleRange(int[] timeOffsets, int startOffset, int sampleLength, float frameTime, int logicalFrameCount, bool loop, out int lowerIndex, out int upperIndex, out float interpolationAmount)
+        {
+            lowerIndex = 0;
+            upperIndex = 0;
+            interpolationAmount = 0f;
+
+            if (sampleLength <= 0)
+            {
+                return false;
+            }
+
+            if (sampleLength == 1)
+            {
+                return true;
+            }
+
+            float normalizedFrameTime = loop
+                ? NormalizeAnimationFrameTime(frameTime, logicalFrameCount)
+                : MathHelper.Clamp(frameTime, 0f, Math.Max(logicalFrameCount - 1, 0));
+
+            if (timeOffsets == null || startOffset < 0 || startOffset >= timeOffsets.Length)
+            {
+                float clampedSampleTime = loop
+                    ? NormalizeAnimationFrameTime(frameTime, sampleLength)
+                    : MathHelper.Clamp(frameTime, 0f, sampleLength - 1);
+                lowerIndex = Math.Min(Math.Max((int)Math.Floor(clampedSampleTime), 0), sampleLength - 1);
+                upperIndex = loop
+                    ? (lowerIndex + 1) % sampleLength
+                    : Math.Min(lowerIndex + 1, sampleLength - 1);
+                interpolationAmount = MathHelper.Clamp(clampedSampleTime - lowerIndex, 0f, 1f);
+                if (upperIndex == lowerIndex)
+                {
+                    interpolationAmount = 0f;
+                }
+
+                return true;
+            }
+
+            int clampedLength = Math.Min(sampleLength, timeOffsets.Length - startOffset);
+            if (clampedLength <= 0)
+            {
+                return false;
+            }
+
+            if (clampedLength == 1)
+            {
+                return true;
+            }
+
+            int firstTime = timeOffsets[startOffset];
+            if (normalizedFrameTime <= firstTime)
+            {
+                if (!loop || normalizedFrameTime == firstTime)
+                {
+                    return true;
+                }
+
+                int lastIndex = clampedLength - 1;
+                int lastTime = timeOffsets[startOffset + lastIndex];
+                float wrappedTime = normalizedFrameTime + logicalFrameCount;
+                float span = (firstTime + logicalFrameCount) - lastTime;
+                if (span <= 0f)
+                {
+                    lowerIndex = lastIndex;
+                    upperIndex = 0;
+                    return true;
+                }
+
+                lowerIndex = lastIndex;
+                upperIndex = 0;
+                interpolationAmount = MathHelper.Clamp((wrappedTime - lastTime) / span, 0f, 1f);
+                return true;
+            }
+
+            for (int i = 0; i < clampedLength - 1; i++)
+            {
+                int currentTime = timeOffsets[startOffset + i];
+                int nextTime = timeOffsets[startOffset + i + 1];
+                if (normalizedFrameTime > nextTime)
+                {
+                    continue;
+                }
+
+                lowerIndex = i;
+                upperIndex = i + 1;
+                int span = nextTime - currentTime;
+                if (span > 0)
+                {
+                    interpolationAmount = MathHelper.Clamp((normalizedFrameTime - currentTime) / span, 0f, 1f);
+                }
+
+                return true;
+            }
+
+            lowerIndex = clampedLength - 1;
+            upperIndex = lowerIndex;
+            interpolationAmount = 0f;
+
+            if (loop)
+            {
+                int lastTime = timeOffsets[startOffset + lowerIndex];
+                float span = (firstTime + logicalFrameCount) - lastTime;
+                if (span > 0f)
+                {
+                    upperIndex = 0;
+                    float wrappedTime = normalizedFrameTime < lastTime
+                        ? normalizedFrameTime + logicalFrameCount
+                        : normalizedFrameTime;
+                    interpolationAmount = MathHelper.Clamp((wrappedTime - lastTime) / span, 0f, 1f);
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TrySampleAdbPosition(ADB adb, ADB_Pointer pointer, float frameTime, int logicalFrameCount, bool loop, out Vector3 sampledPosition)
+        {
+            sampledPosition = Vector3.Zero;
+            if (adb?.Data?.PositionOffsets == null || pointer.PositionLength <= 0)
+            {
+                return false;
+            }
+
+            if (!TryGetAdbSampleRange(adb.Data.TimeOffsets, pointer.PositionTimeOffset, pointer.PositionLength, frameTime, logicalFrameCount, loop, out int lowerIndex, out int upperIndex, out float interpolationAmount))
+            {
+                return false;
+            }
+
+            int lowerDataIndex = pointer.PositionOffset + lowerIndex;
+            int upperDataIndex = pointer.PositionOffset + upperIndex;
+            if (lowerDataIndex < 0 || lowerDataIndex >= adb.Data.PositionOffsets.Length ||
+                upperDataIndex < 0 || upperDataIndex >= adb.Data.PositionOffsets.Length)
+            {
+                return false;
+            }
+
+            Vector3 lowerPosition = adb.Data.PositionOffsets[lowerDataIndex].toXNAVector();
+            Vector3 upperPosition = adb.Data.PositionOffsets[upperDataIndex].toXNAVector();
+            sampledPosition = lowerIndex == upperIndex
+                ? lowerPosition
+                : Vector3.Lerp(lowerPosition, upperPosition, interpolationAmount);
+            return true;
+        }
+
+        private static bool TrySampleAdbRotation(ADB adb, ADB_Pointer pointer, float frameTime, int logicalFrameCount, bool loop, out Quaternion sampledRotation)
+        {
+            sampledRotation = Quaternion.Identity;
+            if (adb?.Data?.Transforms == null || pointer.TransformLength <= 0)
+            {
+                return false;
+            }
+
+            if (!TryGetAdbSampleRange(adb.Data.TimeOffsets, pointer.TransformTimeOffset, pointer.TransformLength, frameTime, logicalFrameCount, loop, out int lowerIndex, out int upperIndex, out float interpolationAmount))
+            {
+                return false;
+            }
+
+            int lowerDataIndex = pointer.TransformOffset + lowerIndex;
+            int upperDataIndex = pointer.TransformOffset + upperIndex;
+            if (lowerDataIndex < 0 || lowerDataIndex >= adb.Data.Transforms.Length ||
+                upperDataIndex < 0 || upperDataIndex >= adb.Data.Transforms.Length)
+            {
+                return false;
+            }
+
+            Quaternion lowerRotation = ToXnaAnimationQuaternion(adb.Data.Transforms[lowerDataIndex]);
+            Quaternion upperRotation = ToXnaAnimationQuaternion(adb.Data.Transforms[upperDataIndex]);
+            sampledRotation = lowerIndex == upperIndex
+                ? lowerRotation
+                : Quaternion.Normalize(Quaternion.Slerp(lowerRotation, upperRotation, interpolationAmount));
+            return true;
+        }
+
+        private bool TryGetAnimatedObjectTransform(AnimatedObjectEntry entry, out AnimatedObjectPlayback playback, out ADB adb, out ADB_Meta meta, out float frameTime)
+        {
+            playback = null;
+            adb = null;
+            meta = null;
+            frameTime = 0f;
+
+            if (entry == null ||
+                !this.animatedObjectPlaybacks.TryGetValue(entry.Id, out playback) ||
+                playback.TransformAnimation?.SourceDefinition?.Source == null ||
+                playback.TransformAnimation.Meta == null)
+            {
+                return false;
+            }
+
+            adb = playback.TransformAnimation.SourceDefinition.Source;
+            meta = playback.TransformAnimation.Meta;
+            if (adb.Pointers == null || meta.PointerTableOffset < 0 || meta.PointerTableOffset >= adb.Pointers.Length)
+            {
+                return false;
+            }
+
+            frameTime = playback.GetCurrentFrameTime();
+            return true;
+        }
+
+        private Matrix GetAnimatedObjectMatrix(AnimatedObjectEntry entry)
+        {
+            if (!this.TryGetAnimatedObjectTransform(entry, out AnimatedObjectPlayback playback, out ADB adb, out ADB_Meta meta, out float frameTime))
+            {
+                return entry?.WorldMatrix ?? Matrix.Identity;
+            }
+
+            ADB_Pointer rootPointer = adb.Pointers[meta.PointerTableOffset];
+            int logicalFrameCount = Math.Max(meta.Length, 1);
+
+            Vector3 animatedPosition = meta.InitialPosition?.toXNAVector() ?? Vector3.Zero;
+            if (TrySampleAdbPosition(adb, rootPointer, frameTime, logicalFrameCount, playback.Loop, out Vector3 sampledPosition))
+            {
+                animatedPosition += sampledPosition;
+            }
+
+            Quaternion animatedRotation = ToXnaAnimationQuaternion(meta.InitialQuaternion);
+            if (TrySampleAdbRotation(adb, rootPointer, frameTime, logicalFrameCount, playback.Loop, out Quaternion sampledRotation))
+            {
+                animatedRotation = Quaternion.Normalize(animatedRotation * sampledRotation);
+            }
+
+            Matrix animationMatrix = Matrix.CreateFromQuaternion(animatedRotation) * Matrix.CreateTranslation(animatedPosition);
+            return animationMatrix * entry.WorldMatrix;
+        }
+
+        private Dictionary<ushort, Matrix> GetAnimatedBoneTransforms(AnimatedObjectEntry entry)
+        {
+            if (!this.TryGetAnimatedObjectTransform(entry, out AnimatedObjectPlayback playback, out ADB adb, out ADB_Meta meta, out float frameTime) ||
+                entry?.SdbDefinition?.Source?.Bones == null ||
+                entry.SdbDefinition.Source.Bones.Count == 0)
+            {
+                return null;
+            }
+
+            List<KeyValuePair<string, SDB_Bone>> orderedBones = entry.SdbDefinition.Source.Bones.ToList();
+            Dictionary<string, ushort> boneIndices = new Dictionary<string, ushort>(StringComparer.InvariantCultureIgnoreCase);
+            for (ushort boneIndex = 0; boneIndex < orderedBones.Count; boneIndex++)
+            {
+                boneIndices[orderedBones[boneIndex].Key] = boneIndex;
+            }
+
+            Dictionary<ushort, Matrix> bindWorldTransforms = new Dictionary<ushort, Matrix>();
+            Dictionary<ushort, Matrix> animatedWorldTransforms = new Dictionary<ushort, Matrix>();
+            Dictionary<ushort, Matrix> boneTransforms = new Dictionary<ushort, Matrix>();
+            int logicalFrameCount = Math.Max(meta.Length, 1);
+            for (ushort boneIndex = 0; boneIndex < orderedBones.Count; boneIndex++)
+            {
+                KeyValuePair<string, SDB_Bone> boneEntry = orderedBones[boneIndex];
+                SDB_Bone bone = boneEntry.Value;
+                Quaternion bindLocalRotation = ToXnaBindQuaternion(bone?.Transform);
+                Vector3 bindLocalPosition = bone?.Position?.toXNAVector() ?? Vector3.Zero;
+                Quaternion animatedLocalRotation = bindLocalRotation;
+                Vector3 animatedLocalPosition = bindLocalPosition;
+
+                int pointerIndex = meta.PointerTableOffset + boneIndex;
+                if (boneIndex != 0 && pointerIndex >= 0 && pointerIndex < adb.Pointers.Length)
+                {
+                    ADB_Pointer pointer = adb.Pointers[pointerIndex];
+                    if (TrySampleAdbPosition(adb, pointer, frameTime, logicalFrameCount, playback.Loop, out Vector3 sampledPosition))
+                    {
+                        animatedLocalPosition += sampledPosition;
+                    }
+
+                    if (TrySampleAdbRotation(adb, pointer, frameTime, logicalFrameCount, playback.Loop, out Quaternion sampledRotation))
+                    {
+                        animatedLocalRotation = Quaternion.Normalize(bindLocalRotation * sampledRotation);
+                    }
+                }
+
+                Matrix bindLocalTransform = Matrix.CreateFromQuaternion(bindLocalRotation) * Matrix.CreateTranslation(bindLocalPosition);
+                Matrix animatedLocalTransform = Matrix.CreateFromQuaternion(animatedLocalRotation) * Matrix.CreateTranslation(animatedLocalPosition);
+                Matrix parentBindTransform = Matrix.Identity;
+                Matrix parentAnimatedTransform = Matrix.Identity;
+                if (bone != null &&
+                    bone.HasParent &&
+                    !string.IsNullOrWhiteSpace(bone.ParentBone) &&
+                    boneIndices.TryGetValue(bone.ParentBone, out ushort parentBoneIndex) &&
+                    bindWorldTransforms.TryGetValue(parentBoneIndex, out Matrix resolvedParentBindTransform) &&
+                    animatedWorldTransforms.TryGetValue(parentBoneIndex, out Matrix resolvedParentAnimatedTransform))
+                {
+                    parentBindTransform = resolvedParentBindTransform;
+                    parentAnimatedTransform = resolvedParentAnimatedTransform;
+                }
+
+                Matrix bindWorldTransform = bindLocalTransform * parentBindTransform;
+                Matrix animatedWorldTransform = animatedLocalTransform * parentAnimatedTransform;
+                bindWorldTransforms[boneIndex] = bindWorldTransform;
+                animatedWorldTransforms[boneIndex] = animatedWorldTransform;
+
+                Matrix deltaTransform = Matrix.Invert(bindWorldTransform) * animatedWorldTransform;
+                if (boneIndex != 0)
+                {
+                    boneTransforms[boneIndex] = animatedWorldTransform * this.GetAnimatedObjectMatrix(entry);
+                }
+                this.LogPlanePropDiagnosticsOnce(
+                    entry,
+                    boneIndex,
+                    boneEntry.Key,
+                    bone,
+                    pointerIndex >= 0 && pointerIndex < adb.Pointers.Length ? adb.Pointers[pointerIndex] : null,
+                    bindLocalPosition,
+                    bindLocalRotation,
+                    animatedLocalPosition,
+                    animatedLocalRotation,
+                    bindLocalTransform,
+                    animatedLocalTransform,
+                    bindWorldTransform,
+                    animatedWorldTransform,
+                    deltaTransform);
+            }
+
+            return boneTransforms.Count == 0 ? null : boneTransforms;
+        }
+
+        private void LogPlanePropDiagnosticsOnce(
+            AnimatedObjectEntry entry,
+            ushort boneIndex,
+            string boneName,
+            SDB_Bone bone,
+            ADB_Pointer pointer,
+            Vector3 bindLocalPosition,
+            Quaternion bindLocalRotation,
+            Vector3 animatedLocalPosition,
+            Quaternion animatedLocalRotation,
+            Matrix bindLocalTransform,
+            Matrix animatedLocalTransform,
+            Matrix bindWorldTransform,
+            Matrix animatedWorldTransform,
+            Matrix deltaTransform)
+        {
+            if (entry == null ||
+                !string.Equals(entry.ModelName, "aa_plane", StringComparison.InvariantCultureIgnoreCase) ||
+                !string.Equals(boneName, "prop", StringComparison.InvariantCultureIgnoreCase))
+            {
+                return;
+            }
+
+            string diagnosticKey = entry.Id + "::" + boneIndex.ToString(CultureInfo.InvariantCulture);
+            if (!this.animationDiagnosticKeys.Add(diagnosticKey))
+            {
+                return;
+            }
+
+            List<string> partMappings = new List<string>();
+            if (!string.IsNullOrWhiteSpace(entry.ModelName) &&
+                this.models.TryGetValue(entry.ModelName, out LR1TrackEditor.Model model) &&
+                model?.parts != null)
+            {
+                for (int partIndex = 0; partIndex < model.parts.Count; partIndex++)
+                {
+                    ModelPart part = model.parts[partIndex];
+                    if (part != null && part.boneid == boneIndex)
+                    {
+                        partMappings.Add(
+                            "#" + partIndex.ToString(CultureInfo.InvariantCulture) +
+                            " material=" + (part.material ?? "<null>") +
+                            " vertexStart=" + part.vertexstart.ToString(CultureInfo.InvariantCulture) +
+                            " vertexCount=" + part.numvertices.ToString(CultureInfo.InvariantCulture) +
+                            " indexStart=" + part.indexstart.ToString(CultureInfo.InvariantCulture) +
+                            " indexCount=" + part.numindices.ToString(CultureInfo.InvariantCulture));
+                    }
+                }
+            }
+
+            Utils.WriteLine("AA_PLANE prop diagnostics", ConsoleColor.Cyan);
+            Utils.WriteLine("  Entry: " + entry.Id + " object=" + entry.ObjectName + " scene=" + entry.SceneName, ConsoleColor.Cyan);
+            Utils.WriteLine("  Bone: index=" + boneIndex.ToString(CultureInfo.InvariantCulture) + " name=" + boneName + " parent=" + (bone?.ParentBone ?? "<none>"), ConsoleColor.Cyan);
+            Utils.WriteLine(
+                "  Pointer: posOffset=" + (pointer?.PositionOffset.ToString(CultureInfo.InvariantCulture) ?? "<null>") +
+                " posLength=" + (pointer?.PositionLength.ToString(CultureInfo.InvariantCulture) ?? "<null>") +
+                " rotOffset=" + (pointer?.TransformOffset.ToString(CultureInfo.InvariantCulture) ?? "<null>") +
+                " rotLength=" + (pointer?.TransformLength.ToString(CultureInfo.InvariantCulture) ?? "<null>"),
+                ConsoleColor.Cyan);
+            Utils.WriteLine("  Bind local pos=" + FormatVector3(bindLocalPosition) + " rot=" + FormatQuaternion(bindLocalRotation), ConsoleColor.Cyan);
+            Utils.WriteLine("  Animated local pos=" + FormatVector3(animatedLocalPosition) + " rot=" + FormatQuaternion(animatedLocalRotation), ConsoleColor.Cyan);
+            Utils.WriteLine("  Bind local matrix=" + FormatMatrix(bindLocalTransform), ConsoleColor.Cyan);
+            Utils.WriteLine("  Animated local matrix=" + FormatMatrix(animatedLocalTransform), ConsoleColor.Cyan);
+            Utils.WriteLine("  Bind world matrix=" + FormatMatrix(bindWorldTransform), ConsoleColor.Cyan);
+            Utils.WriteLine("  Animated world matrix=" + FormatMatrix(animatedWorldTransform), ConsoleColor.Cyan);
+            Utils.WriteLine("  Delta matrix=" + FormatMatrix(deltaTransform), ConsoleColor.Cyan);
+            Utils.WriteLine("  Model parts on bone=" + (partMappings.Count == 0 ? "<none>" : string.Join(" | ", partMappings)), ConsoleColor.Cyan);
+        }
+
+        private static string FormatVector3(Vector3 value)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "({0:0.######}, {1:0.######}, {2:0.######})",
+                value.X,
+                value.Y,
+                value.Z);
+        }
+
+        private static string FormatQuaternion(Quaternion value)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "({0:0.######}, {1:0.######}, {2:0.######}, {3:0.######})",
+                value.X,
+                value.Y,
+                value.Z,
+                value.W);
+        }
+
+        private static string FormatMatrix(Matrix value)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "[[{0:0.######}, {1:0.######}, {2:0.######}, {3:0.######}], [{4:0.######}, {5:0.######}, {6:0.######}, {7:0.######}], [{8:0.######}, {9:0.######}, {10:0.######}, {11:0.######}], [{12:0.######}, {13:0.######}, {14:0.######}, {15:0.######}]]",
+                value.M11, value.M12, value.M13, value.M14,
+                value.M21, value.M22, value.M23, value.M24,
+                value.M31, value.M32, value.M33, value.M34,
+                value.M41, value.M42, value.M43, value.M44);
         }
 
         private void DrawScene(WDB scene)
@@ -1185,7 +1901,7 @@
 
                     referencedGdbIndices.Add(gdbIndex);
                     AnimatedObjectEntry entry = this.animatedObjects.FirstOrDefault(item => string.Equals(item.Id, this.GetAnimatedObjectId(scene, current.Key), StringComparison.InvariantCultureIgnoreCase));
-                    this.models[gdbName].Draw(this, this.basicEffect, CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
+                    this.models[gdbName].Draw(this, this.basicEffect, entry?.WorldMatrix ?? CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
                 }
 
                 foreach (KeyValuePair<string, WDB_BDBModel> current in scene.BDBModels)
@@ -1209,7 +1925,7 @@
 
                     referencedGdbIndices.Add(gdbIndex);
                     AnimatedObjectEntry entry = this.animatedObjects.FirstOrDefault(item => string.Equals(item.Id, this.GetAnimatedObjectId(scene, current.Key), StringComparison.InvariantCultureIgnoreCase));
-                    this.models[gdbName].Draw(this, this.basicEffect, CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
+                    this.models[gdbName].Draw(this, this.basicEffect, entry?.WorldMatrix ?? CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
                 }
 
                 for (int i = 0; i < scene.GDBs.Length; i++)
@@ -1243,7 +1959,11 @@
                     }
 
                     AnimatedObjectEntry entry = this.animatedObjects.FirstOrDefault(item => string.Equals(item.Id, this.GetAnimatedObjectId(scene, current.Key), StringComparison.InvariantCultureIgnoreCase));
-                    this.models[gdbName].Draw(this, this.basicEffect, CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp), null, this.GetAnimatedMaterialOverrides(entry));
+                    Matrix worldMatrix = entry == null
+                        ? CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp)
+                        : this.GetAnimatedObjectMatrix(entry);
+                    Dictionary<ushort, Matrix> boneTransforms = this.GetAnimatedBoneTransforms(entry);
+                    this.models[gdbName].Draw(this, this.basicEffect, worldMatrix, null, this.GetAnimatedMaterialOverrides(entry), boneTransforms);
                 }
             }
         }
@@ -1263,15 +1983,21 @@
             this.extraWdbScenes.Clear();
             this.scenePaths.Clear();
             this.sceneMabs.Clear();
+            this.sceneAdbs.Clear();
+            this.sceneSdbs.Clear();
             this.animatedObjects.Clear();
             this.animatedObjectPlaybacks.Clear();
             this.spb = null;
             this.cpb = null;
             this.hzb = null;
+            this.evb = null;
             this.skb = null;
             this.skbmesh = null;
             this.embs.Clear();
+            this.emitterDefinitions.Clear();
             this.rrbs.Clear();
+            this.animationDiagnosticKeys.Clear();
+            this.totalElapsedSeconds = 0f;
             foreach (LR1TrackEditor.Model model in this.models.Values)
             {
                 DisposeModelBuffers(model);
@@ -1521,6 +2247,7 @@
             {
                 this.brickrotation -= 2f;
             }
+            this.totalElapsedSeconds += (float)gameTime.ElapsedGameTime.TotalSeconds;
             if (this.animatedObjectPlaybacks.Count > 0)
             {
                 float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;

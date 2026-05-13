@@ -5,6 +5,7 @@
     public class ModelPart
     {
         public string material;
+        public ushort boneid = ushort.MaxValue;
         public int vertexstart;
         public int indexstart;
         public int numvertices;

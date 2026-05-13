@@ -312,6 +312,7 @@
                         int vertexlength = 0;
                         int indexlength = 0;
                         int materialid = list[0].materialid;
+                        ushort boneid = list[0].boneid;
                         ModelPart item = new ModelPart();
                         using (List<Block>.Enumerator enumerator = list.GetEnumerator())
                         {
@@ -323,13 +324,14 @@
                                     break;
                                 }
                                 current = enumerator.Current;
-                                if (current.materialid == materialid)
+                                if (current.materialid == materialid && current.boneid == boneid)
                                 {
                                     vertexlength += current.vertexlength;
                                     indexlength += current.indexlength;
                                     continue;
                                 }
                                 item.material = gdb.Materials[materialid];
+                                item.boneid = boneid;
                                 item.indexstart = num7;
                                 item.vertexstart = vertexstart;
                                 item.numvertices = vertexlength;
@@ -341,9 +343,11 @@
                                 vertexstart = current.vertexstart;
                                 num7 = current.indexstart - current.vertexoffset;
                                 materialid = current.materialid;
+                                boneid = current.boneid;
                             }
                         }
                         item.material = gdb.Materials[materialid];
+                        item.boneid = boneid;
                         item.indexstart = num7;
                         item.vertexstart = vertexstart;
                         item.numvertices = vertexlength;
@@ -440,6 +444,7 @@
             model.parts.Add(new ModelPart
             {
                 material = null,
+                boneid = ushort.MaxValue,
                 indexstart = 0,
                 vertexstart = 0,
                 numvertices = model.numvertices,
@@ -545,36 +550,100 @@
             return new EMB(embpath);
         }
 
+        public static EVB loadEVB(string evbpath)
+        {
+            Utils.WriteLine("Loading EVB: " + evbpath, ConsoleColor.DarkBlue);
+            return new EVB(evbpath);
+        }
+
         /// <summary>
         /// Resolves a RAB file reference to a real file path.
         /// RAB references may have explicit extensions or need common ones tried.
         /// </summary>
         private static string ResolveRABPath(string directory, string reference, params string[] fallbackExtensions)
         {
-            if (reference == null) return null;
+            return ResolveRABPath(GetSearchDirectories(directory), reference, fallbackExtensions);
+        }
 
-            // Try exact path first
-            string path = Path.Combine(directory, reference);
-            if (File.Exists(path)) return path;
-
-            // Try without extension + fallback extensions
-            string baseName = Path.GetFileNameWithoutExtension(reference);
-            foreach (string ext in fallbackExtensions)
+        private static string ResolveRABPath(IEnumerable<string> directories, string reference, params string[] fallbackExtensions)
+        {
+            if (reference == null)
             {
-                path = Path.Combine(directory, baseName + ext);
-                if (File.Exists(path)) return path;
+                return null;
             }
 
-            foreach (string alias in GetAssetStemAliases(baseName))
+            if (Path.IsPathRooted(reference) && File.Exists(reference))
             {
+                return reference;
+            }
+
+            string baseName = Path.GetFileNameWithoutExtension(reference);
+            foreach (string directory in directories)
+            {
+                string path = Path.Combine(directory, reference);
+                if (File.Exists(path))
+                {
+                    return path;
+                }
+
                 foreach (string ext in fallbackExtensions)
                 {
-                    path = Path.Combine(directory, alias + ext);
-                    if (File.Exists(path)) return path;
+                    path = Path.Combine(directory, baseName + ext);
+                    if (File.Exists(path))
+                    {
+                        return path;
+                    }
+                }
+
+                foreach (string alias in GetAssetStemAliases(baseName))
+                {
+                    foreach (string ext in fallbackExtensions)
+                    {
+                        path = Path.Combine(directory, alias + ext);
+                        if (File.Exists(path))
+                        {
+                            return path;
+                        }
+                    }
                 }
             }
 
             return null;
+        }
+
+        private static IEnumerable<string> GetSearchDirectories(params string[] directories)
+        {
+            HashSet<string> uniqueDirectories = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+            foreach (string directory in directories)
+            {
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    continue;
+                }
+
+                string fullPath = Path.GetFullPath(directory);
+                if (uniqueDirectories.Add(fullPath))
+                {
+                    yield return fullPath;
+                }
+            }
+        }
+
+        private static IEnumerable<string> GetCollisionSearchDirectories(GameView game, params string[] directories)
+        {
+            foreach (string directory in GetSearchDirectories(directories))
+            {
+                yield return directory;
+            }
+
+            if (!string.IsNullOrWhiteSpace(game?.gamedir))
+            {
+                string commonDirectory = Path.Combine(game.gamedir, "GAMEDATA", "COMMON");
+                foreach (string directory in GetSearchDirectories(commonDirectory))
+                {
+                    yield return directory;
+                }
+            }
         }
 
         private static IEnumerable<string> GetAssetStemAliases(string stem)
@@ -753,25 +822,32 @@
             }
         }
 
-        private static void LoadCollisionReference(GameView game, string directory, string collisionRef, HashSet<string> loadedPaths)
+        private static void LoadCollisionReference(GameView game, string directory, string collisionRef, HashSet<string> loadedPaths, bool isCheckpointTrigger = false)
         {
             if (string.IsNullOrWhiteSpace(collisionRef))
             {
                 return;
             }
 
-            string wdbPath = ResolveRABPath(directory, collisionRef, ".WDB", ".WDF");
+            string[] collisionSearchDirectories = GetCollisionSearchDirectories(game, directory).ToArray();
+            string wdbPath = ResolveRABPath(collisionSearchDirectories, collisionRef, ".WDB", ".WDF");
             if (wdbPath != null && loadedPaths.Add(wdbPath))
             {
                 WDB collisionScene = new WDB(wdbPath);
+                string collisionDirectory = Path.GetDirectoryName(wdbPath);
+                string[] nestedSearchDirectories = GetCollisionSearchDirectories(game, collisionDirectory, directory).ToArray();
                 Dictionary<int, LR1TrackEditor.Model> gdbModels = new Dictionary<int, LR1TrackEditor.Model>();
                 for (int i = 0; i < (collisionScene.GDBs ?? Array.Empty<string>()).Length; i++)
                 {
                     string gdbName = collisionScene.GDBs[i];
-                    string gdbPath = ResolveRABPath(directory, gdbName, ".GDB");
+                    string gdbPath = ResolveRABPath(nestedSearchDirectories, gdbName, ".GDB");
                     if (gdbPath != null && loadedPaths.Add(gdbPath))
                     {
                         gdbModels[i] = loadmodel(game, gdbPath, false);
+                    }
+                    else if (gdbPath == null)
+                    {
+                        Utils.WriteLine("Could not resolve collision GDB: " + gdbName + " referenced by " + wdbPath, ConsoleColor.Yellow);
                     }
                 }
 
@@ -788,7 +864,8 @@
                     {
                         Model = gdbModels[current.Value.ModelRef.IndexGDB],
                         Transform = CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
-                        SourcePath = wdbPath
+                        SourcePath = wdbPath,
+                        IsCheckpointTrigger = isCheckpointTrigger
                     });
                 }
 
@@ -800,7 +877,8 @@
                         {
                             Model = gdbModels[i],
                             Transform = Matrix.Identity,
-                            SourcePath = wdbPath
+                            SourcePath = wdbPath,
+                            IsCheckpointTrigger = isCheckpointTrigger
                         });
                     }
                 }
@@ -809,10 +887,14 @@
                 for (int i = 0; i < (collisionScene.BVBs ?? Array.Empty<string>()).Length; i++)
                 {
                     string bvbName = collisionScene.BVBs[i];
-                    string bvbPath = ResolveRABPath(directory, bvbName, ".BVB");
+                    string bvbPath = ResolveRABPath(nestedSearchDirectories, bvbName, ".BVB");
                     if (bvbPath != null && loadedPaths.Add(bvbPath))
                     {
                         bvbModels[i] = loadCollisionBVB(game, bvbPath);
+                    }
+                    else if (bvbPath == null)
+                    {
+                        Utils.WriteLine("Could not resolve collision BVB: " + bvbName + " referenced by " + wdbPath, ConsoleColor.Yellow);
                     }
                 }
 
@@ -829,7 +911,8 @@
                     {
                         Model = bvbModels[current.Value.ModelRef],
                         Transform = CreateWorldMatrix(current.Value.Position, current.Value.RotationFwd, current.Value.RotationUp),
-                        SourcePath = wdbPath
+                        SourcePath = wdbPath,
+                        IsCheckpointTrigger = isCheckpointTrigger
                     });
                 }
 
@@ -841,34 +924,69 @@
                         {
                             Model = bvbModels[i],
                             Transform = Matrix.Identity,
-                            SourcePath = wdbPath
+                            SourcePath = wdbPath,
+                            IsCheckpointTrigger = isCheckpointTrigger
                         });
                     }
                 }
                 return;
             }
+            else if (wdbPath != null && isCheckpointTrigger)
+            {
+                MarkCollisionInstancesAsCheckpoint(game, wdbPath);
+            }
 
-            string bvbDirectPath = ResolveRABPath(directory, collisionRef, ".BVB");
+            string bvbDirectPath = ResolveRABPath(collisionSearchDirectories, collisionRef, ".BVB");
             if (bvbDirectPath != null && loadedPaths.Add(bvbDirectPath))
             {
                 game.collisionModels.Add(new CollisionModelInstance
                 {
                     Model = loadCollisionBVB(game, bvbDirectPath),
                     Transform = Matrix.Identity,
-                    SourcePath = bvbDirectPath
+                    SourcePath = bvbDirectPath,
+                    IsCheckpointTrigger = isCheckpointTrigger
                 });
                 return;
             }
+            else if (bvbDirectPath != null && isCheckpointTrigger)
+            {
+                MarkCollisionInstancesAsCheckpoint(game, bvbDirectPath);
+            }
 
-            string gdbDirectPath = ResolveRABPath(directory, collisionRef, ".GDB");
+            string gdbDirectPath = ResolveRABPath(collisionSearchDirectories, collisionRef, ".GDB");
             if (gdbDirectPath != null && loadedPaths.Add(gdbDirectPath))
             {
                 game.collisionModels.Add(new CollisionModelInstance
                 {
                     Model = loadmodel(game, gdbDirectPath, false),
                     Transform = Matrix.Identity,
-                    SourcePath = gdbDirectPath
+                    SourcePath = gdbDirectPath,
+                    IsCheckpointTrigger = isCheckpointTrigger
                 });
+                return;
+            }
+            else if (gdbDirectPath != null && isCheckpointTrigger)
+            {
+                MarkCollisionInstancesAsCheckpoint(game, gdbDirectPath);
+            }
+
+            Utils.WriteLine("Could not resolve collision reference: " + collisionRef, ConsoleColor.Yellow);
+        }
+
+        private static void MarkCollisionInstancesAsCheckpoint(GameView game, string sourcePath)
+        {
+            if (game == null || string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return;
+            }
+
+            foreach (CollisionModelInstance collisionModel in game.collisionModels)
+            {
+                if (collisionModel != null &&
+                    string.Equals(collisionModel.SourcePath, sourcePath, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    collisionModel.IsCheckpointTrigger = true;
+                }
             }
         }
 
@@ -960,6 +1078,17 @@
                     continue;
                 }
 
+                loadedMabs.AddRange(LoadMabsFromPaths(new[] { mabPath }));
+            }
+
+            return loadedMabs;
+        }
+
+        private static List<LoadedMabDefinition> LoadMabsFromPaths(IEnumerable<string> mabPaths)
+        {
+            List<LoadedMabDefinition> loadedMabs = new List<LoadedMabDefinition>();
+            foreach (string mabPath in mabPaths.Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.InvariantCultureIgnoreCase))
+            {
                 try
                 {
                     Utils.WriteLine("Loading MAB: " + mabPath, ConsoleColor.DarkGreen);
@@ -1026,6 +1155,148 @@
             }
 
             return loadedMabs;
+        }
+
+        private static List<LoadedAdbDefinition> LoadSceneAdbs(string wdbPath, WDB scene)
+        {
+            List<LoadedAdbDefinition> loadedAdbs = new List<LoadedAdbDefinition>();
+            if (scene?.ADBs == null || scene.ADBs.Length == 0)
+            {
+                return loadedAdbs;
+            }
+
+            for (int i = 0; i < scene.ADBs.Length; i++)
+            {
+                loadedAdbs.Add(null);
+            }
+
+            string directory = Path.GetDirectoryName(wdbPath);
+            for (int adbIndex = 0; adbIndex < scene.ADBs.Length; adbIndex++)
+            {
+                string adbRef = scene.ADBs[adbIndex];
+                string adbPath = ResolveRABPath(directory, adbRef, ".ADB", ".ADF");
+                if (adbPath == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    Utils.WriteLine("Loading ADB: " + adbPath, ConsoleColor.DarkYellow);
+                    ADB adb = new ADB(adbPath);
+                    LoadedAdbDefinition loaded = new LoadedAdbDefinition
+                    {
+                        SourcePath = adbPath,
+                        DisplayName = Path.GetFileNameWithoutExtension(adbPath),
+                        Source = adb
+                    };
+
+                    int animationIndex = 0;
+                    foreach (KeyValuePair<string, ADB_Meta> current in adb.Animations ?? new Dictionary<string, ADB_Meta>())
+                    {
+                        loaded.Animations.Add(new AdbAnimationDefinition
+                        {
+                            Id = loaded.DisplayName + "@Animation" + animationIndex.ToString(CultureInfo.InvariantCulture),
+                            DisplayName = loaded.DisplayName + " :: " + current.Key,
+                            SourceName = loaded.DisplayName,
+                            AnimationName = current.Key,
+                            SourceIndex = animationIndex,
+                            Meta = current.Value,
+                            SourceDefinition = loaded
+                        });
+                        animationIndex++;
+                    }
+
+                    loadedAdbs[adbIndex] = loaded;
+                }
+                catch (Exception ex)
+                {
+                    Utils.WriteLine("Failed to load ADB: " + ex.Message, ConsoleColor.Red);
+                }
+            }
+
+            return loadedAdbs;
+        }
+
+        private static List<LoadedSdbDefinition> LoadSceneSdbs(string wdbPath, WDB scene)
+        {
+            List<LoadedSdbDefinition> loadedSdbs = new List<LoadedSdbDefinition>();
+            if (scene?.SDBs == null || scene.SDBs.Length == 0)
+            {
+                return loadedSdbs;
+            }
+
+            for (int i = 0; i < scene.SDBs.Length; i++)
+            {
+                loadedSdbs.Add(null);
+            }
+
+            string directory = Path.GetDirectoryName(wdbPath);
+            for (int sdbIndex = 0; sdbIndex < scene.SDBs.Length; sdbIndex++)
+            {
+                string sdbRef = scene.SDBs[sdbIndex];
+                string sdbPath = ResolveRABPath(directory, sdbRef, ".SDB");
+                if (sdbPath == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    Utils.WriteLine("Loading SDB: " + sdbPath, ConsoleColor.DarkYellow);
+                    loadedSdbs[sdbIndex] = new LoadedSdbDefinition
+                    {
+                        SourcePath = sdbPath,
+                        DisplayName = Path.GetFileNameWithoutExtension(sdbPath),
+                        Source = new SDB(sdbPath)
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Utils.WriteLine("Failed to load SDB: " + ex.Message, ConsoleColor.Red);
+                }
+            }
+
+            return loadedSdbs;
+        }
+
+        private static LoadedEmitterDefinition LoadEmitterDefinition(GameView game, string embPath)
+        {
+            EMB emb = loadEMB(embPath);
+            LoadedEmitterDefinition loaded = new LoadedEmitterDefinition
+            {
+                SourcePath = embPath,
+                DisplayName = Path.GetFileNameWithoutExtension(embPath),
+                Source = emb
+            };
+
+            string directory = Path.GetDirectoryName(embPath);
+            IEnumerable<string> mdbCandidates = Directory.Exists(directory)
+                ? Directory.GetFiles(directory, "EMIT*.MDB", SearchOption.TopDirectoryOnly)
+                : Array.Empty<string>();
+            foreach (string mdbPath in mdbCandidates.Distinct(StringComparer.InvariantCultureIgnoreCase))
+            {
+                try
+                {
+                    foreach (KeyValuePair<string, Material> materialEntry in loadmaterials(mdbPath, game.GraphicsDevice))
+                    {
+                        if (!loaded.Materials.ContainsKey(materialEntry.Key))
+                        {
+                            loaded.Materials[materialEntry.Key] = materialEntry.Value;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Utils.WriteLine("Failed to load emitter MDB: " + ex.Message, ConsoleColor.Red);
+                }
+            }
+
+            IEnumerable<string> mabCandidates = Directory.Exists(directory)
+                ? Directory.GetFiles(directory, "EMIT*.MAB", SearchOption.TopDirectoryOnly)
+                : Array.Empty<string>();
+            loaded.MaterialAnimations.AddRange(LoadMabsFromPaths(mabCandidates));
+            return loaded;
         }
 
         private static IEnumerable<string> GetAdditionalSceneReferences(RAB_Track track)
@@ -1125,6 +1396,7 @@
             if (loadTrackCollisionGeometry && (track.MaybeCollisionMeshes != null || hasCheckpointCollision))
             {
                 HashSet<string> loadedCollisionPaths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+                HashSet<string> loadedCheckpointCollisionPaths = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
                 foreach (string collisionRef in track.MaybeCollisionMeshes ?? Array.Empty<string>())
                 {
                     try
@@ -1141,7 +1413,7 @@
                 {
                     try
                     {
-                        LoadCollisionReference(game, dir, track.CheckpointFiles[1], loadedCollisionPaths);
+                        LoadCollisionReference(game, dir, track.CheckpointFiles[1], loadedCheckpointCollisionPaths, true);
                     }
                     catch (Exception ex)
                     {
@@ -1150,6 +1422,10 @@
                 }
 
                 Utils.WriteLine("Loaded collision meshes: " + game.collisionModels.Count.ToString(CultureInfo.InvariantCulture), ConsoleColor.DarkYellow);
+                if (game.collisionModels.Count > 0)
+                {
+                    game.form.CollisionGeometryVisible = true;
+                }
             }
             else if (!loadTrackCollisionGeometry && track.MaybeCollisionMeshes != null && track.MaybeCollisionMeshes.Length > 0)
             {
@@ -1252,8 +1528,26 @@
                 }
             }
 
+            game.evb = null;
+            if (track.EventScriptFile != null)
+            {
+                string evbPath = ResolveRABPath(dir, track.EventScriptFile, ".EVB", ".EVT");
+                if (evbPath != null)
+                {
+                    try
+                    {
+                        game.evb = loadEVB(evbPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Utils.WriteLine("Failed to load EVB: " + ex.Message, ConsoleColor.Red);
+                    }
+                }
+            }
+
             // Load emitters
             game.embs.Clear();
+            game.emitterDefinitions.Clear();
             if (loadTrackEmitters && track.EmitterFiles != null)
             {
                 foreach (string emRef in track.EmitterFiles)
@@ -1269,7 +1563,12 @@
                     {
                         try
                         {
-                            game.embs.Add(loadEMB(embPath));
+                            LoadedEmitterDefinition emitterDefinition = LoadEmitterDefinition(game, embPath);
+                            if (emitterDefinition?.Source != null)
+                            {
+                                game.embs.Add(emitterDefinition.Source);
+                                game.emitterDefinitions.Add(emitterDefinition);
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -1349,7 +1648,7 @@
                     ? wdb.BDBs[kvp.Value.ModelRef.IndexBDB] : "null";
                 Utils.WriteLine("  BDB: " + kvp.Key + " -> GDB index " + (kvp.Value.ModelRef?.IndexGDB.ToString() ?? "null") + " = " + refGdb + ", BDB = " + refBdb, ConsoleColor.DarkMagenta);
             }
-            game.RegisterSceneResources(wdb, wdbpath, LoadSceneMabs(wdbpath, wdb), clearExistingModels);
+            game.RegisterSceneResources(wdb, wdbpath, LoadSceneMabs(wdbpath, wdb), LoadSceneAdbs(wdbpath, wdb), LoadSceneSdbs(wdbpath, wdb), clearExistingModels);
             return wdb;
         }
 

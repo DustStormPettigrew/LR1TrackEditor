@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.11217.181 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LR1TrackEditor", "Track Editor\LR1TrackEditor.csproj", "{D884D107-9CD5-4BBB-B735-991DC7ECD723}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LR1TrackEditor", "LR1TrackEditor.csproj", "{D884D107-9CD5-4BBB-B735-991DC7ECD723}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -68,6 +68,7 @@
         private ComboBox SkyboxSelector;
         private ComboBox DefaultSkyboxSelector;
         private Label label13;
+        private CheckBox SkyboxCollisionCheckbox;
         private TextBox SkyboxFloatBox;
         private CheckBox SkyboxFloatCheckbox;
         private Button SkyboxApplybutton;
@@ -182,7 +183,9 @@
             this.tsmiVertexColors.Checked = Settings.Default.doVertexColors;
             this.tsmiPowerupBricks.Checked = Settings.Default.AutoloadPowerup;
             this.tsmiStaticObjects.Checked = Settings.Default.AutoloadObject;
+            this.tsmiAnimatedObjects.Checked = game.doDrawAnimObj;
             this.tsmiCollisionGeometry.Checked = game.doDrawCollision;
+            this.SkyboxCollisionCheckbox.Checked = game.doDrawCollision;
             base.Size = Settings.Default.FormSize;
         }
 
@@ -621,7 +624,19 @@
             else if (sender == this.tsmiCollisionGeometry)
             {
                 this.game.doDrawCollision = item.Checked;
+                if (this.SkyboxCollisionCheckbox.Checked != item.Checked)
+                {
+                    this.SkyboxCollisionCheckbox.Checked = item.Checked;
+                }
                 Console.WriteLine("Collision geometry " + str);
+            }
+        }
+
+        private void SkyboxCollisionCheckbox_CheckedChanged(object sender, EventArgs e)
+        {
+            if (this.tsmiCollisionGeometry.Checked != this.SkyboxCollisionCheckbox.Checked)
+            {
+                this.tsmiCollisionGeometry.Checked = this.SkyboxCollisionCheckbox.Checked;
             }
         }
 
@@ -756,6 +771,7 @@
             this.tabControl1 = new TabControl();
             this.tpSKB = new TabPage();
             this.DefaultSkyboxSelector = new ComboBox();
+            this.SkyboxCollisionCheckbox = new CheckBox();
             this.label13 = new Label();
             this.SkyboxFloatBox = new TextBox();
             this.SkyboxFloatCheckbox = new CheckBox();
@@ -1073,6 +1089,7 @@
             this.tabControl1.SelectedIndexChanged += new EventHandler(this.tabControl1_SelectedIndexChanged);
             this.tpSKB.AutoScroll = true;
             this.tpSKB.Controls.Add(this.DefaultSkyboxSelector);
+            this.tpSKB.Controls.Add(this.SkyboxCollisionCheckbox);
             this.tpSKB.Controls.Add(this.label13);
             this.tpSKB.Controls.Add(this.SkyboxFloatBox);
             this.tpSKB.Controls.Add(this.SkyboxFloatCheckbox);
@@ -1092,6 +1109,14 @@
             this.DefaultSkyboxSelector.Name = "DefaultSkyboxSelector";
             this.DefaultSkyboxSelector.Size = new Size(0x79, 0x18);
             this.DefaultSkyboxSelector.TabIndex = 11;
+            this.SkyboxCollisionCheckbox.AutoSize = true;
+            this.SkyboxCollisionCheckbox.Location = new System.Drawing.Point(15, 260);
+            this.SkyboxCollisionCheckbox.Name = "SkyboxCollisionCheckbox";
+            this.SkyboxCollisionCheckbox.Size = new Size(123, 17);
+            this.SkyboxCollisionCheckbox.TabIndex = 12;
+            this.SkyboxCollisionCheckbox.Text = "Show collision mesh";
+            this.SkyboxCollisionCheckbox.UseVisualStyleBackColor = true;
+            this.SkyboxCollisionCheckbox.CheckedChanged += new EventHandler(this.SkyboxCollisionCheckbox_CheckedChanged);
             this.label13.AutoSize = true;
             this.label13.Location = new System.Drawing.Point(12, 0xdb);
             this.label13.Name = "label13";
@@ -2152,7 +2177,7 @@
                 return;
             }
 
-            foreach (MabAnimationDefinition animation in selectedEntry.Animations)
+            foreach (AnimatedObjectAnimationOption animation in selectedEntry.AvailableAnimations)
             {
                 this.AnimatedObjectAnimationComboBox.Items.Add(animation);
             }
@@ -2162,20 +2187,24 @@
             this.AnimatedObjectRunButton.Enabled = this.AnimatedObjectAnimationComboBox.Items.Count > 0;
             if (this.AnimatedObjectAnimationComboBox.Items.Count > 0)
             {
-                this.AnimatedObjectAnimationComboBox.SelectedIndex = 0;
+                AnimatedObjectAnimationOption preferredAnimation =
+                    selectedEntry.ObjectType == AnimatedObjectType.AnimatedModel
+                        ? selectedEntry.AvailableAnimations.FirstOrDefault(item => item.Kind == AnimatedObjectAnimationKind.Transform)
+                        : null;
+                this.AnimatedObjectAnimationComboBox.SelectedItem = preferredAnimation ?? this.AnimatedObjectAnimationComboBox.Items[0];
             }
 
             this.AnimatedObjectStatusLabel.Text =
                 selectedEntry.ObjectName + Environment.NewLine +
                 "Model: " + selectedEntry.ModelName + Environment.NewLine +
                 "Type: " + selectedEntry.ObjectType + Environment.NewLine +
-                "Animations: " + selectedEntry.Animations.Count.ToString(ci);
+                "Animations: " + selectedEntry.AvailableAnimations.Count.ToString(ci);
         }
 
         private void AnimatedObjectRunButton_Click(object sender, EventArgs e)
         {
             if (!(this.AnimatedObjectListBox.SelectedItem is AnimatedObjectEntry selectedEntry) ||
-                !(this.AnimatedObjectAnimationComboBox.SelectedItem is MabAnimationDefinition selectedAnimation))
+                !(this.AnimatedObjectAnimationComboBox.SelectedItem is AnimatedObjectAnimationOption selectedAnimation))
             {
                 return;
             }
@@ -2249,6 +2278,11 @@
         {
             this.refreshStaticObjects();
             this.game.RebuildAnimatedObjects();
+            int animatedSceneModelCount = this.game.GetAnimatedSceneModelCount();
+            if (animatedSceneModelCount > 0)
+            {
+                this.tsmiAnimatedObjects.Checked = true;
+            }
             this.AnimatedObjectListBox.Items.Clear();
             this.AnimatedObjectAnimationComboBox.Items.Clear();
             this.AnimatedObjectAnimationComboBox.Enabled = false;
@@ -2261,11 +2295,15 @@
 
             if (this.game.animatedObjects.Count == 0)
             {
-                this.AnimatedObjectStatusLabel.Text = "No animatable objects loaded.";
+                this.AnimatedObjectStatusLabel.Text = animatedSceneModelCount > 0
+                    ? animatedSceneModelCount.ToString(ci) + " animated scene models loaded." + Environment.NewLine + "No resolvable animation data matched."
+                    : "No animated scene models loaded.";
                 return;
             }
 
-            this.AnimatedObjectStatusLabel.Text = this.game.animatedObjects.Count.ToString(ci) + " animated objects loaded.";
+            this.AnimatedObjectStatusLabel.Text =
+                this.game.animatedObjects.Count.ToString(ci) + " animatable objects loaded." + Environment.NewLine +
+                animatedSceneModelCount.ToString(ci) + " animated scene models visible.";
             this.AnimatedObjectListBox.SelectedIndex = 0;
         }
 
@@ -2407,6 +2445,8 @@
                 this.tpSKB.Size = new Size(0x103, 0x181);
                 this.DefaultSkyboxSelector.Location = new System.Drawing.Point(15, 0xeb);
                 this.DefaultSkyboxSelector.Size = new Size(0x79, 0x15);
+                this.SkyboxCollisionCheckbox.Location = new System.Drawing.Point(15, 260);
+                this.SkyboxCollisionCheckbox.Size = new Size(0x7a, 0x11);
                 this.label13.Location = new System.Drawing.Point(12, 0xdb);
                 this.label13.Size = new Size(0x59, 13);
                 this.SkyboxFloatBox.Location = new System.Drawing.Point(0x73, 0x10d);
@@ -2626,6 +2666,8 @@
                 this.tpSKB.Size = new Size(0x133, 390);
                 this.DefaultSkyboxSelector.Location = new System.Drawing.Point(14, 0xef);
                 this.DefaultSkyboxSelector.Size = new Size(0x79, 0x18);
+                this.SkyboxCollisionCheckbox.Location = new System.Drawing.Point(14, 0x107);
+                this.SkyboxCollisionCheckbox.Size = new Size(0x93, 0x15);
                 this.BrickplaceStopButton.Location = new System.Drawing.Point(0x3a6, 0xb1);
                 this.BrickplaceStopButton.Size = new Size(0x4b, 0x19);
                 this.Brickplacelabel.Location = new System.Drawing.Point(890, 0x9d);
@@ -2937,6 +2979,22 @@
                 this.tsmiStaticObjects.Checked;
             set =>
                 this.tsmiStaticObjects.Checked = value;
+        }
+
+        public bool animatedObjectsToolStripItemChecked
+        {
+            get =>
+                this.tsmiAnimatedObjects.Checked;
+            set =>
+                this.tsmiAnimatedObjects.Checked = value;
+        }
+
+        public bool CollisionGeometryVisible
+        {
+            get =>
+                this.tsmiCollisionGeometry.Checked;
+            set =>
+                this.tsmiCollisionGeometry.Checked = value;
         }
 
         public bool TabControlFocused =>
